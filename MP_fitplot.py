@@ -121,7 +121,127 @@ def HaloProfile(lr, lr200, lrs, lgamma, cosm_pars, profile_model="NFW", quantity
             h2y = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r/rs)
             
             return np.sqrt((r / r200)**(3 - gamma) * M200 * h2y / h2x * G_mpc / r)
+   
+
+#NFW surface density profile
+def nfw_sigma(R, rho_s, r_s):
+    """
+    Computes the projected surface density Σ(R) of the NFW profile.
+    Parameters:
+        R     : projected radius (scalar or array) [same units as r_s]
+        rho_s : scale density
+        r_s   : scale radius
+    Returns:
+        Σ(R)  : surface density at radius R
+    """
     
+    x = np.array(R) / r_s
+    sigma = np.zeros_like(x)
+
+    # x < 1
+    mask1 = (x < 1)
+    sqrt1 = np.sqrt(1 - x[mask1]**2)
+    sigma[mask1] = (1 / (x[mask1]**2 - 1)) * (1 - (2 / sqrt1) * np.arctanh(sqrt1 / (1 + x[mask1])))
+
+    # x == 1
+    mask2 = (x == 1)
+    sigma[mask2] = 1.0 / 3.0
+
+    # x > 1
+    mask3 = (x > 1)
+    sqrt2 = np.sqrt(x[mask3]**2 - 1)
+    sigma[mask3] = (1 / (x[mask3]**2 - 1)) * (1 - (2 / sqrt2) * np.arctan(sqrt2 / (1 + x[mask3])))
+
+    return 2 * rho_s * r_s * sigma
+
+
+#NFW projected mass profile
+def nfw_projected_mass(R, rho_s, r_s):
+    """
+    Computes the projected mass M_proj(R) inside a cylinder of radius R for the NFW profile.
+    Parameters:
+        R     : projected radius (scalar or array) [same units as r_s]
+        rho_s : scale density
+        r_s   : scale radius
+    Returns:
+        M_proj(R) : projected mass inside radius R
+    """
+
+    x = np.array(R) / r_s
+    M_proj = np.zeros_like(x)
+
+    # x < 1
+    mask1 = x < 1
+    acos_arg = 1 / x[mask1]
+    term = np.arccosh(acos_arg)
+    F = (term**1) / np.sqrt(1 - x[mask1]**2)
+    M_proj[mask1] = np.log(x[mask1] / 2) + F
+
+    # x == 1
+    mask2 = x == 1
+    M_proj[mask2] = 1 - np.log(2)  #This simplifies to 0
+
+    # x > 1
+    mask3 = x > 1
+    a = 1 / x[mask3]
+    term = np.arccos(a)
+    F = (term**1) / np.sqrt(x[mask3]**2 - 1)
+    M_proj[mask3] = np.log(x[mask3] / 2) + F
+
+    return 4 * np.pi * rho_s * r_s**3 * M_proj
+
+
+#Function used to compute the 2D halo profile, either NFW or gNFW, mass, density or circular velocity
+def HaloProfile2D(lr, lr200, lrs, cosm_pars, profile_model="NFW", quantity_type="MASS"):
+    """
+    This function returns a halo 2D mass or 2D density profile at the specified radius, either NFW or gNFW.
+    
+    Args:
+    -----
+    r:     [float]
+           Halo profile radii in Mpc
+    r200:  [float]
+           Halo r200 in Mpc
+    rs:    [float]
+           Halo scale radius in Mpc
+    gamma: [float]
+           gNFW gamma exponent (defined in the interval [0, 2], it's 1 for NFW)
+    cosm_pars:     [float array]
+                   Array containing cosmological parameters (h, omega matter, omega lambda, redshift)
+    profile_model: [string]
+                   Profile model to return: NFW, GNFW
+    quantity_type: [string]
+                   Profile type to return: MASS, DENSITY
+
+    Returns:
+    --------
+    profile: [float]
+             Value of the selected profile at a given radius, in Msun for MASS profile, and Msun/Mpc^3 for DENSITY profile
+    """
+
+    h, Om, Ol, z = cosm_pars
+    H0 = 100 * h
+
+    r = 10**lr
+    r200 = 10**lr200
+    rs = 10**lrs
+
+    c200 = r200 / rs
+    x = r / rs
+    H2z = H0**2 * (Om * (1 + z)**3 + Ol)
+    M200 = 100 * H2z / G_mpc * r200**3
+    fac200 = np.log(1 + c200) - c200 / (1 + c200)
+
+    #Compute either mass or density for the NFW profile   
+    if profile_model.upper() == "NFW":
+        rho_s = M200 / (4 * np.pi * rs**3) / fac200
+        
+        if quantity_type.upper() == "MASS":
+            return nfw_projected_mass(r, rho_s, rs)
+
+        elif quantity_type.upper() == "DENSITY":
+            return nfw_sigma(r, rho_s, rs)   
+
 
 def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, Ntofit, mThresh, Rfit_bounds=None, Rfit_bounds_gnfw=None, 
                       nfw_bounds=((-3., -3.), (2., 2.)), gnfw_bounds=((-3., -3., -15.), (2., 2., np.log10(2.)))):
@@ -248,6 +368,8 @@ def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, 
             print(f"GLOBAL PROGRESS: {len(filenames_done) + 1} / {len(filenames)}\n")
             
             with h5py.File(h5name, "r") as hdf:
+                print("READING FILE: " + h5name)
+                
                 #Get the cosmological parameters
                 h = hdf['Header'].attrs['h']
                 Om = hdf['Header'].attrs['Om']
@@ -267,7 +389,7 @@ def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, 
                 Nhalos_file += len(ids)    #Add the number of halos in the file to the total number of halos the a region
 
                 #Display global progress
-                print("READING FILE: " + h5name + f" ----- Halos to fit: {len(ids)}")
+                print(f" ----- Halos to fit: {len(ids)}")
             
                 #Loop over the halo IDs
                 for id_count, ii in enumerate(ids):
@@ -451,7 +573,7 @@ def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, 
                     except ValueError:
                         print("\tSKIP FIT FOR HALO " + str(ii) + " IN REGION " + str(D))
 
-            print(f"\nTotal halos saved = {len(halo_ids)}")
+            print("\nTotal " + simulation_type + f" halos saved = {len(halo_ids)}")
             print("--------------------------------------------------------------\n")
             
             #Save current file as already read
@@ -469,9 +591,268 @@ def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, 
                                                                                      Nhalos_file=Nhalos_file, Mpart=Mpart)
 
 
+def FitSimulationDataMP2D(simulation_type, sim_regions, fit_quantities, dimensions, save_IDs, 
+                        basename, Ntofit, Rfit_bounds=None, nfw_bounds=((-3, -3), (2, 2))):
+    """
+    This function performs 2D NFW fits of halos of a given simulation, selecting only the halos saved by the FitSimulationData function in the 3D case. 
+    The fits are performed using non-linear least squares through the SciPy function curve_fit.
+    
+    Args:
+    -----
+    simulation_type: [string]
+                     Type of simulation, e.g. CDM
+    fit_quantities:  [string array]
+                     Profiles to fit the NFW and gNFW models to, e.g. ["MASS", "DENSITY"]
+    dimensions:      [string array]
+                     Axes along which the projected profiles were computed
+    save_IDs:        [int array]
+                     IDs of the halos to save. If None, save the halos based on their fit M200 NFW
+    Rfit_bounds:     [array_like of tuples]
+                     Each tuple should contain the lower and upper bounds on the radius over which to fit for a given simulation_type
+    nfw_bounds:      [2-tuple of array_like]
+                     Lower and upper bounds on the NFW fit parameters
+    gnfw_bounds:     [2-tuple of array_like]
+                     Lower and upper bounds on the gNFW fit parameters
+
+    Return:
+    -------
+    model_pars_2D:        [dict]
+                          Nested dictionary containing all NFW and gNFW fit parameters, chi2 and bin radius for both mass 
+                          and, if enabled, density profiles
+    model_cov_2D:         [dict]
+                          Nested dictionary containing all NFW and gNFW fit parameters uncertainties and covariances for both mass 
+                          and, if enabled, density profiles
+    model_profiles_2D:    [dict]
+                          Nested dictionary containing all mass, density and velocity anisotropy profiles
+    """
+    
+    #Define the relevant quantities for every profile
+    #####################################################################################################
+    
+    Nhalos_file = 0
+    fit_pars = {"NFW": dict()}
+    fit_cov = {"NFW": dict()}
+
+    for quantity in fit_quantities:
+        fit_pars["NFW"][quantity], fit_cov["NFW"][quantity] = dict(), dict()
+        
+        for dim in dimensions:
+            #Fit parameters for every dimension
+            fit_pars["NFW"][quantity][dim] = {"r200" : [], "rs": [], "chi2": [], "M200": []}
+            fit_cov["NFW"][quantity][dim] = {"r200" : [], "rs": [], "r200_rs": []}
+
+    #Mass, density and anisotropy profiles for every projected dimension
+    halo_profiles = {dim: {"MASS": [], "DENSITY": [], "DEN_CUM": [], "NUM": [], "CUMNUM": [], "ERR_MASS": [], 
+                              "ERR_DENSITY": [], "ERR_DEN_CUM": [], "R": []} for dim in dimensions}
+                              
+    #Extract the binned profiles and other relevant quantities from the HDF5 files
+    #####################################################################################################
+    
+    #Loop over the simulation regions
+    print("CURRENT SIMULATION: " + simulation_type)
+    
+    for D in sim_regions[:]:
+        #Define the folder where all progress is saved
+        distdir = os.getcwd()
+        distname = basename + "/" + simulation_type + D + "/progress/2D/"
+        distot = os.path.join(distdir, distname)
+        
+        #If the directory doesn't exist, create it
+        if not os.path.exists(distot):
+            os.makedirs(distot) 
+            
+        #Path of all hdf5 files in a given simulation folder
+        filenames = [os.path.normpath(i) for i in glob.glob(basename + "/" + simulation_type + D + "/*.hdf5")]
+        filenames_remaining = []
+
+        if len(glob.glob(basename + "/" + simulation_type + D + "/progress/2D/filenames.txt")) == 0:
+            filenames_done = []
+
+        else:
+            filenames_done = np.loadtxt(basename + "/" + simulation_type + D + "/progress/2D/filenames.txt", dtype="str", ndmin=1)
+
+        if len(filenames_done) != 0:
+            for fnames in filenames:
+                if (filenames_done == fnames).any() == False:
+                    filenames_remaining.append(fnames)
+
+            #Load current progress from file
+            filenames_done = filenames_done.tolist()
+
+        else:
+            filenames_remaining = filenames
+
+        #Count the total number of halos in the region across all files
+        Nhalos_region = 0
+
+        if Ntofit == None:
+            file_max = len(filenames_remaining) + 1
+
+        else:
+            file_max = Ntofit
+
+        #Read the hdf5 files
+        for f_i, h5name in enumerate(filenames_remaining[:file_max]):
+            print(f"GLOBAL PROGRESS: {len(filenames_done) + 1} / {len(filenames)}\n")
+            
+            with h5py.File(h5name, "r") as hdf:
+                print("READING FILE: " + h5name)
+                
+                #Get the cosmological parameters
+                h = hdf['Header'].attrs['h']
+                Om = hdf['Header'].attrs['Om']
+                Ol = hdf['Header'].attrs['Ol']
+                z = hdf['Header'].attrs['z']
+                cosm_pars = np.array([h, Om, Ol, z])
+                H2z = (100 * h)**2 * (Om * (1 + z)**3 + Ol)
+            
+                #Only fit the saved halos corresponding to the 3D IDs in the file
+                ids = hdf['Header/Group_IDs'][:]    #Group IDs
+                file_IDs = np.intersect1d(save_IDs, ids)
+                
+                #Halo properties
+                data = hdf['RadialProfiles']   #Halo profiles
+                Mpart = hdf['Header'].attrs['Mpart']    #Particle masses
+                Nhalos_file += len(file_IDs)    #Add the number of halos in the file to the total number of halos the a region
+
+                for id_count, ii in enumerate(file_IDs):
+                    #Display halo fitting progress
+                    if int(id_count / Nhalos_file * 100) % 5 == 0:
+                        sys.stdout.write("\r")
+                        sys.stdout.write(f"{simulation_type} ---- PROGRESS: {id_count / Nhalos_file * 100:.0f}% ---- ")
+                        sys.stdout.flush()
+                        
+                    #Get halo parameters, r200 and r500
+                    r500c = data['Group_%i_R500'%ii][0]
+
+                    for dim in dimensions:
+                        #Get projected profiles
+                        bin_centers = data["Group_%i_Radius2D"%ii + dim][:]  #In units of r500
+                        radius_Mpc = bin_centers * r500c   #In Mpc
+                        Mass_2D = data["Group_%i_Mass2D"%ii + dim][:]    #Total mass inside a bin
+                        MassCum_2D = data["Group_%i_MassCum2D"%ii + dim][:]
+                        Den_2D = data["Group_%i_Density2D"%ii + dim][:] / r500c**2    #In M_sun/Mpc^2
+                        Ncum_2D = data["Group_%i_NpartCum2D"%ii + dim][:]
+                        Nbin_2D = data["Group_%i_Npart2D"%ii + dim][:]
+
+                        #Compute mass Poisson errors
+                        err_mass = Mpart * np.sqrt(Ncum_2D)
+                
+                        #Compute density Poisson errors, if enabled
+                        #Since the bin edges are equally spaced in log space, to compute the volume shells add half of the difference between log bin centers to 
+                        #the log bin center to obtain all the bin edges except the first, which is added manually
+                        bin_edges = 10**np.append(np.log10(bin_centers[0]) - 0.5 * np.diff(np.log10(bin_centers))[0], 
+                                                   np.log10(bin_centers) + 0.5 * np.diff(np.log10(bin_centers))[0])
+                        area_bins = np.pi * (bin_edges[1:]**2 - bin_edges[:-1]**2)
+                        err_den = np.sqrt(Nbin_2D) / (area_bins * r500c**2)
+
+                        #Cumulative surface density, in M_sun/Mpc^2
+                        DenCum_2D = MassCum_2D / (np.pi * bin_edges[1:]**2 * r500c**2)
+                        err_den_cum = Mpart * np.sqrt(Ncum_2D) / (np.pi * bin_edges[1:]**2 * r500c**2)
+
+                        #####################################################################################################
+
+                        # Radius interval to fit
+                        R_cut = Rfit_bounds[0]
+                        R_cond = np.logical_and(np.logical_and(bin_centers >= R_cut, bin_centers < Rfit_bounds[1]), Mass_2D != 0)
+                        
+                        #####################################################################################################
+
+                        #Fit the binned profiles with NFW and gNFW
+                        try:
+                            profile_type = np.array(["NFW"])
+                            fit_parameters_dict = {p_type: {q: {"popt": None, "cov": None, "chi2": None} for q in fit_quantities} 
+                                                   for p_type in profile_type}
+
+                            initial_pars = [[np.log10(1.5*r500c), np.log10(0.5*r500c)], [np.log10(1.5*r500c), np.log10(0.5*r500c), 0]]
+                            
+                            for p_type in profile_type:                           
+                                for quantity in fit_quantities:
+                                    if quantity == "MASS":
+                                        binned_profile = MassCum_2D
+                                        err_profile = err_mass
+        
+                                    elif quantity == "DENSITY":
+                                        binned_profile = Den_2D
+                                        err_profile = err_den
+                                    
+                                    #Define the NFW fit functions with the current cosmology
+                                    if p_type == "NFW":
+                                        fnfw = lambda lr, lr200, lrs: np.log10(HaloProfile2D(lr, lr200, lrs, cosm_pars, p_type, quantity))
+                                        y_data = np.log10(binned_profile[R_cond])
+                                        y_err = err_profile[R_cond] / binned_profile[R_cond] / np.log(10)
+                                        par_0 = initial_pars[0]
+                                        bounds = nfw_bounds
+
+                                    #Fit the profile
+                                    fit_parameters_dict[p_type][quantity]["popt"],\
+                                    fit_parameters_dict[p_type][quantity]["cov"],\
+                                    fit_parameters_dict[p_type][quantity]["chi2"] = FitAndChi2(fnfw, np.log10(radius_Mpc[R_cond]), y_data, y_err,
+                                                                                                par_0=par_0, par_bounds=bounds)
+        
+                            #####################################################################################################
+
+                            #Save the fit parameters and binned profiles only if the mass fit results in rs < r200
+                            r200_MassFit = 10**fit_parameters_dict[p_type][quantity]["popt"][0]
+                            rs_MassFit = 10**fit_parameters_dict[p_type][quantity]["popt"][1]
+                            
+                            if rs_MassFit < r200_MassFit:                    
+                                #Save mass, density, and number profiles and their uncertainties, and the radii in units of r500
+                                profiles_list = [MassCum_2D, Den_2D, DenCum_2D, Nbin_2D, Ncum_2D, err_mass, err_den, err_den_cum, bin_centers]
+                                
+                                for key, quantity in zip(list(halo_profiles[dim].keys()), profiles_list):
+                                    halo_profiles[dim][key].append(quantity)
+                                    
+                                #####################################################################################################
+            
+                                #NFW fit
+                                #Save the fit parameters and uncertainties, the chi2 and M200
+                                if np.any(profile_type == "NFW"):
+                                    for quantity in fit_quantities:
+                                        fit_NFW = [*fit_parameters_dict["NFW"][quantity]["popt"],
+                                                   fit_parameters_dict["NFW"][quantity]["chi2"],
+                                                   (10**fit_parameters_dict["NFW"][quantity]["popt"][0])**3 * 100 * H2z / G_mpc]
+            
+                                        cov_NFW = [*np.diag(fit_parameters_dict["NFW"][quantity]["cov"]),
+                                                   fit_parameters_dict["NFW"][quantity]["cov"][0, 1]]
+            
+                                        #Store the fit parameters in a dictionary
+                                        for p_i, key in enumerate(list(fit_pars["NFW"][quantity][dim].keys())):
+                                            fit_pars["NFW"][quantity][dim][key].append(fit_NFW[p_i])
+            
+                                        #Store the fit covariances in a dictionary
+                                        for p_i, key in enumerate(list(fit_cov["NFW"][quantity][dim].keys())):
+                                            fit_cov["NFW"][quantity][dim][key].append(cov_NFW[p_i])
+                                
+                        except ValueError:
+                            print("SKIP FIT FOR HALO " + str(ii) + " IN REGION " + str(D))
+
+                print("\nTotal " + simulation_type + f" halos saved = {len(file_IDs)}")
+                print("--------------------------------------------------------------\n")
+                
+                #Save current file as already read
+                filenames_done.append(h5name)
+                
+                #Create a save file with the current progress
+                np.savetxt(basename + "/" + simulation_type + D + "/progress/2D/filenames.txt", filenames_done, fmt="%s")
+            
+        #Save current progress to file in the "progress" folder
+        save_name = "save_state_N" + str(len(filenames_done))
+        np.savez(basename + "/" + simulation_type + D + "/progress/2D/" + save_name, fit_pars=fit_pars, fit_cov=fit_cov, 
+                                                                                     halo_profiles=halo_profiles)
+
+
 def multiprocessing_fit(sim_type, sim_regions, fit_quantities, basename, Ntofit, mThresh, Rfit_bounds, Rfit_bounds_gnfw):
     print("STARTED PROCESS " + str(os.getpid()) + " WORKING ON " + sim_type)
     
     FitSimulationDataMP(sim_type, sim_regions, fit_quantities, basename, Ntofit, mThresh, Rfit_bounds, Rfit_bounds_gnfw)
+
+    print("FINISHED PROCESS " + str(os.getpid()) + " WORKING ON " + sim_type)
+
+
+def multiprocessing_fit_2D(sim_type, sim_regions, fit_quantities, dimensions, fit_ids, basename, Ntofit, Rfit_bounds):
+    print("STARTED PROCESS " + str(os.getpid()) + " WORKING ON " + sim_type)
+    
+    FitSimulationDataMP2D(sim_type, sim_regions, fit_quantities, dimensions, fit_ids, basename, Ntofit, Rfit_bounds)
 
     print("FINISHED PROCESS " + str(os.getpid()) + " WORKING ON " + sim_type)
