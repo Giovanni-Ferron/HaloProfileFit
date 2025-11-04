@@ -284,42 +284,9 @@ def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, 
     sim_props:        [dict]
                       Contains a tuple (Nhalo_tot, Mpart, rs_large, gamma_low) containing total number of halos in the simulation and particle mass
     """
-
-    #Define the relevant quantities for every profile
-    #####################################################################################################
     
-    #Store the halo IDs for each saved fit
-    halo_ids = []
-    cosm_pars = []
-
-    #Total number of halos and number of large rs
-    Nhalos_file = 0
-    rs_large = 0
-    Mpart = 0
-    
-    #Halo r500c and r200c from simulation
-    r500c_SIM = []
-    r200c_SIM = []
-    
-    #Binned halo profiles     
-    #Insert all halo profiles corresponding to the saved NFW and gNFW fits into a dictionary to be returned by the function
-    halo_profiles = {"MASS": [], "DENSITY": [], "VCIRC": [], "BETA": [], "NUM": [], "CUMNUM": [], 
-                     "SIGMAr": [], "SIGMAt": [], "SIGMAp": [], "ERR_MASS": [], "ERR_DENSITY": [], "ERR_VCIRC": [], "R": []}
-
-    #Dicts containing all NFW and gNFW fit parameters, chi2 and uncertainties for mass and, if enabled, density and circular velocity profiles
-    fit_pars = {"NFW": dict(), "gNFW": dict()}
-    fit_cov = {"NFW": dict(), "gNFW": dict()}
-
-    for quantity in fit_quantities:
-        fit_pars["NFW"][quantity] = {"r200" : [], "rs": [], "chi2": [], "M200": []}
-        fit_pars["gNFW"][quantity] = {"r200" : [], "rs": [], "gamma": [], "chi2": [], "M200": [], "rm2": []}
-
-        fit_cov["NFW"][quantity] = {"r200" : [], "rs": [], "r200_rs": []}
-        fit_cov["gNFW"][quantity] = {"r200" : [], "rs": [], "gamma": [], "r200_rs": [], "r200_gamma": [], "rs_gamma": []}
-
     #Extract the binned profiles and other relevant quantities from the HDF5 files
     #####################################################################################################
-
     print("CURRENT SIMULATION: " + simulation_type)
     
     #Loop over the simulation regions
@@ -354,9 +321,6 @@ def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, 
         else:
             filenames_remaining = filenames
 
-        #Count the total number of halos in the region across all files
-        Nhalos_region = 0
-
         if Ntofit == None:
             file_max = len(filenames_remaining) + 1
 
@@ -367,6 +331,39 @@ def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, 
         for f_i, h5name in enumerate(filenames_remaining[:file_max]):
             print(f"GLOBAL PROGRESS: {len(filenames_done) + 1} / {len(filenames)}\n")
             
+            #Define the relevant quantities for every profile
+            #####################################################################################################
+            
+            #Store the halo IDs for each saved fit
+            halo_ids = []
+            cosm_pars = []
+
+            #Total number of halos and number of large rs
+            Nhalos_file = 0
+            rs_large = 0
+            Mpart = 0
+            
+            #Halo r500c and r200c from simulation
+            r500c_SIM = []
+            r200c_SIM = []
+            
+            #Binned halo profiles     
+            #Insert all halo profiles corresponding to the saved NFW and gNFW fits into a dictionary to be returned by the function
+            halo_profiles = {"MASS": [], "DENSITY": [], "VCIRC": [], "BETA": [], "NUM": [], "CUMNUM": [], 
+                             "SIGMAr": [], "SIGMAt": [], "SIGMAp": [], "ERR_MASS": [], "ERR_DENSITY": [], "ERR_VCIRC": [], "R": []}
+
+            #Dicts containing all NFW and gNFW fit parameters, chi2 and uncertainties for mass and, if enabled, density and circular velocity profiles
+            fit_pars = {"NFW": dict(), "gNFW": dict()}
+            fit_cov = {"NFW": dict(), "gNFW": dict()}
+
+            for quantity in fit_quantities:
+                fit_pars["NFW"][quantity] = {"r200" : [], "rs": [], "chi2": [], "M200": []}
+                fit_pars["gNFW"][quantity] = {"r200" : [], "rs": [], "gamma": [], "chi2": [], "M200": [], "rm2": []}
+
+                fit_cov["NFW"][quantity] = {"r200" : [], "rs": [], "r200_rs": []}
+                fit_cov["gNFW"][quantity] = {"r200" : [], "rs": [], "gamma": [], "r200_rs": [], "r200_gamma": [], "rs_gamma": []}
+
+            #Read the HDF5 files
             with h5py.File(h5name, "r") as hdf:
                 print("READING FILE: " + h5name)
                 
@@ -582,13 +579,13 @@ def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, 
             #Create a save file with the current progress
             np.savetxt(basename + "/" + simulation_type + D + "/progress/3D/filenames.txt", filenames_done, fmt="%s")
             
-        #Save current progress to file in the "progress" folder
-        save_name = "save_state_N" + str(len(filenames_done))
-        np.savez(basename + "/" + simulation_type + D + "/progress/3D/" + save_name, fit_pars=fit_pars, fit_cov=fit_cov, 
-                                                                                     halo_profiles=halo_profiles, halo_ids=halo_ids,
-                                                                                     r500c_SIM=r500c_SIM, r200c_SIM=r200c_SIM,
-                                                                                     cosm_pars=cosm_pars, 
-                                                                                     Nhalos_file=Nhalos_file, Mpart=Mpart)
+            #Save current progress to file in the "progress" folder
+            save_name = "save_state_N" + str(len(filenames_done))
+            np.savez(basename + "/" + simulation_type + D + "/progress/3D/" + save_name, fit_pars=fit_pars, fit_cov=fit_cov, 
+                                                                                         halo_profiles=halo_profiles, halo_ids=halo_ids,
+                                                                                         r500c_SIM=r500c_SIM, r200c_SIM=r200c_SIM,
+                                                                                         cosm_pars=cosm_pars, 
+                                                                                         Nhalos_file=Nhalos_file, Mpart=Mpart)
 
 
 def FitSimulationDataMP2D(simulation_type, sim_regions, fit_quantities, dimensions, save_IDs, 
@@ -625,25 +622,6 @@ def FitSimulationDataMP2D(simulation_type, sim_regions, fit_quantities, dimensio
     model_profiles_2D:    [dict]
                           Nested dictionary containing all mass, density and velocity anisotropy profiles
     """
-    
-    #Define the relevant quantities for every profile
-    #####################################################################################################
-    
-    Nhalos_file = 0
-    fit_pars = {"NFW": dict()}
-    fit_cov = {"NFW": dict()}
-
-    for quantity in fit_quantities:
-        fit_pars["NFW"][quantity], fit_cov["NFW"][quantity] = dict(), dict()
-        
-        for dim in dimensions:
-            #Fit parameters for every dimension
-            fit_pars["NFW"][quantity][dim] = {"r200" : [], "rs": [], "chi2": [], "M200": []}
-            fit_cov["NFW"][quantity][dim] = {"r200" : [], "rs": [], "r200_rs": []}
-
-    #Mass, density and anisotropy profiles for every projected dimension
-    halo_profiles = {dim: {"MASS": [], "DENSITY": [], "DEN_CUM": [], "NUM": [], "CUMNUM": [], "ERR_MASS": [], 
-                              "ERR_DENSITY": [], "ERR_DEN_CUM": [], "R": []} for dim in dimensions}
                               
     #Extract the binned profiles and other relevant quantities from the HDF5 files
     #####################################################################################################
@@ -695,6 +673,26 @@ def FitSimulationDataMP2D(simulation_type, sim_regions, fit_quantities, dimensio
         for f_i, h5name in enumerate(filenames_remaining[:file_max]):
             print(f"GLOBAL PROGRESS: {len(filenames_done) + 1} / {len(filenames)}\n")
             
+            #Define the relevant quantities for every profile
+            #####################################################################################################
+            
+            Nhalos_file = 0
+            fit_pars = {"NFW": dict()}
+            fit_cov = {"NFW": dict()}
+
+            for quantity in fit_quantities:
+                fit_pars["NFW"][quantity], fit_cov["NFW"][quantity] = dict(), dict()
+                
+                for dim in dimensions:
+                    #Fit parameters for every dimension
+                    fit_pars["NFW"][quantity][dim] = {"r200" : [], "rs": [], "chi2": [], "M200": []}
+                    fit_cov["NFW"][quantity][dim] = {"r200" : [], "rs": [], "r200_rs": []}
+
+            #Mass, density and anisotropy profiles for every projected dimension
+            halo_profiles = {dim: {"MASS": [], "DENSITY": [], "DEN_CUM": [], "NUM": [], "CUMNUM": [], "ERR_MASS": [], 
+                                      "ERR_DENSITY": [], "ERR_DEN_CUM": [], "R": []} for dim in dimensions}
+            
+            #Read the HDF5 files
             with h5py.File(h5name, "r") as hdf:
                 print("READING FILE: " + h5name)
                 
@@ -836,10 +834,10 @@ def FitSimulationDataMP2D(simulation_type, sim_regions, fit_quantities, dimensio
                 #Create a save file with the current progress
                 np.savetxt(basename + "/" + simulation_type + D + "/progress/2D/filenames.txt", filenames_done, fmt="%s")
             
-        #Save current progress to file in the "progress" folder
-        save_name = "save_state_N" + str(len(filenames_done))
-        np.savez(basename + "/" + simulation_type + D + "/progress/2D/" + save_name, fit_pars=fit_pars, fit_cov=fit_cov, 
-                                                                                     halo_profiles=halo_profiles)
+                #Save current progress to file in the "progress" folder
+                save_name = "save_state_N" + str(len(filenames_done))
+                np.savez(basename + "/" + simulation_type + D + "/progress/2D/" + save_name, fit_pars=fit_pars, fit_cov=fit_cov, 
+                                                                                             halo_profiles=halo_profiles)
 
 
 def multiprocessing_fit(sim_type, sim_regions, fit_quantities, basename, Ntofit, mThresh, Rfit_bounds, Rfit_bounds_gnfw):
