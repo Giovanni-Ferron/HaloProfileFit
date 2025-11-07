@@ -570,22 +570,22 @@ def FitSimulationDataMP(simulation_type, sim_regions, fit_quantities, basename, 
                     except ValueError:
                         print("\tSKIP FIT FOR HALO " + str(ii) + " IN REGION " + str(D))
 
-            print("\nTotal " + simulation_type + f" halos saved = {len(halo_ids)}")
-            print("--------------------------------------------------------------\n")
-            
-            #Save current file as already read
-            filenames_done.append(h5name)
-            
-            #Create a save file with the current progress
-            np.savetxt(basename + "/" + simulation_type + D + "/progress/3D/filenames.txt", filenames_done, fmt="%s")
-            
-            #Save current progress to file in the "progress" folder
-            save_name = "save_state_N" + str(len(filenames_done))
-            np.savez(basename + "/" + simulation_type + D + "/progress/3D/" + save_name, fit_pars=fit_pars, fit_cov=fit_cov, 
-                                                                                         halo_profiles=halo_profiles, halo_ids=halo_ids,
-                                                                                         r500c_SIM=r500c_SIM, r200c_SIM=r200c_SIM,
-                                                                                         cosm_pars=cosm_pars, 
-                                                                                         Nhalos_file=Nhalos_file, Mpart=Mpart)
+                print("\nTotal " + simulation_type + f" halos saved = {len(halo_ids)}")
+                print("--------------------------------------------------------------\n")
+                
+                #Save current file as already read
+                filenames_done.append(h5name)
+                
+                #Create a save file with the current progress
+                np.savetxt(basename + "/" + simulation_type + D + "/progress/3D/filenames.txt", filenames_done, fmt="%s")
+                
+                #Save current progress to file in the "progress" folder
+                save_name = "save_state_N" + str(len(filenames_done))
+                np.savez(basename + "/" + simulation_type + D + "/progress/3D/" + save_name, fit_pars=fit_pars, fit_cov=fit_cov, 
+                                                                                             halo_profiles=halo_profiles, halo_ids=halo_ids,
+                                                                                             r500c_SIM=r500c_SIM, r200c_SIM=r200c_SIM,
+                                                                                             cosm_pars=cosm_pars, 
+                                                                                             Nhalos_file=Nhalos_file, Mpart=Mpart)
 
 
 def FitSimulationDataMP2D(simulation_type, sim_regions, fit_quantities, dimensions, save_IDs, 
@@ -791,36 +791,37 @@ def FitSimulationDataMP2D(simulation_type, sim_regions, fit_quantities, dimensio
                             #####################################################################################################
 
                             #Save the fit parameters and binned profiles only if the mass fit results in rs < r200
-                            r200_MassFit = 10**fit_parameters_dict[p_type][quantity]["popt"][0]
-                            rs_MassFit = 10**fit_parameters_dict[p_type][quantity]["popt"][1]
+                            # r200_MassFit = 10**fit_parameters_dict[p_type][quantity]["popt"][0]
+                            # rs_MassFit = 10**fit_parameters_dict[p_type][quantity]["popt"][1]
                             
-                            if rs_MassFit < r200_MassFit:                    
-                                #Save mass, density, and number profiles and their uncertainties, and the radii in units of r500
-                                profiles_list = [MassCum_2D, Den_2D, DenCum_2D, Nbin_2D, Ncum_2D, err_mass, err_den, err_den_cum, bin_centers]
+                            # if rs_MassFit < r200_MassFit:
+                            
+                            #Save mass, density, and number profiles and their uncertainties, and the radii in units of r500
+                            profiles_list = [MassCum_2D, Den_2D, DenCum_2D, Nbin_2D, Ncum_2D, err_mass, err_den, err_den_cum, bin_centers]
+                            
+                            for key, quantity in zip(list(halo_profiles[dim].keys()), profiles_list):
+                                halo_profiles[dim][key].append(quantity)
                                 
-                                for key, quantity in zip(list(halo_profiles[dim].keys()), profiles_list):
-                                    halo_profiles[dim][key].append(quantity)
-                                    
-                                #####################################################################################################
-            
-                                #NFW fit
-                                #Save the fit parameters and uncertainties, the chi2 and M200
-                                if np.any(profile_type == "NFW"):
-                                    for quantity in fit_quantities:
-                                        fit_NFW = [*fit_parameters_dict["NFW"][quantity]["popt"],
-                                                   fit_parameters_dict["NFW"][quantity]["chi2"],
-                                                   (10**fit_parameters_dict["NFW"][quantity]["popt"][0])**3 * 100 * H2z / G_mpc]
-            
-                                        cov_NFW = [*np.diag(fit_parameters_dict["NFW"][quantity]["cov"]),
-                                                   fit_parameters_dict["NFW"][quantity]["cov"][0, 1]]
-            
-                                        #Store the fit parameters in a dictionary
-                                        for p_i, key in enumerate(list(fit_pars["NFW"][quantity][dim].keys())):
-                                            fit_pars["NFW"][quantity][dim][key].append(fit_NFW[p_i])
-            
-                                        #Store the fit covariances in a dictionary
-                                        for p_i, key in enumerate(list(fit_cov["NFW"][quantity][dim].keys())):
-                                            fit_cov["NFW"][quantity][dim][key].append(cov_NFW[p_i])
+                            #####################################################################################################
+        
+                            #NFW fit
+                            #Save the fit parameters and uncertainties, the chi2 and M200
+                            if np.any(profile_type == "NFW"):
+                                for quantity in fit_quantities:
+                                    fit_NFW = [*fit_parameters_dict["NFW"][quantity]["popt"],
+                                               fit_parameters_dict["NFW"][quantity]["chi2"],
+                                               (10**fit_parameters_dict["NFW"][quantity]["popt"][0])**3 * 100 * H2z / G_mpc]
+        
+                                    cov_NFW = [*np.diag(fit_parameters_dict["NFW"][quantity]["cov"]),
+                                               fit_parameters_dict["NFW"][quantity]["cov"][0, 1]]
+        
+                                    #Store the fit parameters in a dictionary
+                                    for p_i, key in enumerate(list(fit_pars["NFW"][quantity][dim].keys())):
+                                        fit_pars["NFW"][quantity][dim][key].append(fit_NFW[p_i])
+        
+                                    #Store the fit covariances in a dictionary
+                                    for p_i, key in enumerate(list(fit_cov["NFW"][quantity][dim].keys())):
+                                        fit_cov["NFW"][quantity][dim][key].append(cov_NFW[p_i])
                                 
                         except ValueError:
                             print("SKIP FIT FOR HALO " + str(ii) + " IN REGION " + str(D))
@@ -835,9 +836,10 @@ def FitSimulationDataMP2D(simulation_type, sim_regions, fit_quantities, dimensio
                 np.savetxt(basename + "/" + simulation_type + D + "/progress/2D/filenames.txt", filenames_done, fmt="%s")
             
                 #Save current progress to file in the "progress" folder
-                save_name = "save_state_N" + str(len(filenames_done))
-                np.savez(basename + "/" + simulation_type + D + "/progress/2D/" + save_name, fit_pars=fit_pars, fit_cov=fit_cov, 
-                                                                                             halo_profiles=halo_profiles)
+                if len(file_IDs) != 0:
+                    save_name = "save_state_N" + str(len(filenames_done))
+                    np.savez(basename + "/" + simulation_type + D + "/progress/2D/" + save_name, fit_pars=fit_pars, fit_cov=fit_cov, 
+                                                                                                 halo_profiles=halo_profiles)
 
 
 def multiprocessing_fit(sim_type, sim_regions, fit_quantities, basename, Ntofit, mThresh, Rfit_bounds, Rfit_bounds_gnfw):
