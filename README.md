@@ -7,6 +7,7 @@ The code fits binned halo profiles with a 3D and 2D NFW model and a 3D gNFW mode
 - 2D stacked profiles of mass, density and density excess.
 - Concentration-mass relation using both the 3D and 2D NFW fits.
 - Halo sparsities and their relation with concentration and mass.
+- PCA components and explained variance of quantities such as $M_{200}$, $c_{200}$ and $s_{500}$.
 
 The code can be used to analyze simulations of multiple cosmological models at a time, and it can fit 3D mass, density and circular velocity profiles with NFW and gNFW. The 2D fits can only be performed with NFW, for both projected mass and projected density. The **\"Global code parameters\"** section allows to change settings such as the location of the hdf5 files, the number of cosmological models to consider, the fit bounds and the folder for saving all generated plots. The `MP_fitplot.py` module is used for multiprocessing, which can be enabled through the global code parameters. If enabled, multiple processes are opened to read and fit the HDF5 files of multiple different input simulations in parallel. If a simulation is composed of multiple HDF5 files, the routine can be instructed to only read up to a certain number of files, specified in the global parameters section. Furthermore, each batch of fits obtained by files read in this way will be saved to a "progress" folder, to keep track of the files already read and to backup the fit progress. 
 
