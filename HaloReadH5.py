@@ -12,8 +12,9 @@ import time
 
 
 class HaloModel:
-    def __init__(self, name):
+    def __init__(self, name, custom_profile=None):
         self.name = name
+        self.custom_profile = custom_profile
         
         if name.upper() == "NFW":
             free_par_names = ["r200", "rs"]
@@ -27,7 +28,11 @@ class HaloModel:
 
 
     def _profile(self, lr, *params, cosm_params, quantity, projection=False):
-        return HaloProfile(lr, *params, cosm_params=cosm_params, profile_model=self.name, quantity_type=quantity, projection=projection)
+        if custom_profile == None:
+            return HaloProfile(lr, *params, cosm_params=cosm_params, profile_model=self.name, quantity_type=quantity, projection=projection)
+            
+        else:
+            return custom_profile(lr, *params, cosm_params, quantity)
 
 
 def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_type="MASS", projection=False):
