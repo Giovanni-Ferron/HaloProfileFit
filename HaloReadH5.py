@@ -162,7 +162,11 @@ def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_typ
         x = r / rs
         
         if quantity_type.upper() == "MASS":
+            h2x = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r200/rs)
+            
             if projection:
+                rho_0 = M200 / (4 * np.pi * rs**3) * ((r200/rs)**(3 - gamma) / (3 - gamma) * h2x)**-1
+                
                 sigma = lambda R:\
                         quad(lambda r_3D: 2 * rho_0 / ((r_3D/rs)**(1 - gamma) * (1 + (r_3D/rs))**(3 - gamma)) / np.sqrt(r_3D**2 - R**2),
                             R, np.inf)[0]
@@ -172,7 +176,6 @@ def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_typ
                 return np.array(Mproj)
             
             else:
-                h2x = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r200/rs)
                 h2y = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r/rs)
 
                 return (r / r200)**(3 - gamma) * M200 * h2y / h2x
