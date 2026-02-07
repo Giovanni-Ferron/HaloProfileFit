@@ -12,6 +12,11 @@ import time
 
 
 class HaloModel:
+    """
+    Class used to store information about the halo profile models used in fitting. 
+    By default only NFW and gNFW are available, but more can be added by inserting them here and in the HaloProfile function.
+    """
+    
     def __init__(self, name, custom_profile=None, free_par_names=None, fit_bounds=None):
         self.name = name
         self.custom_profile = custom_profile
@@ -28,6 +33,28 @@ class HaloModel:
 
 
     def _profile(self, lr, *params, cosm_params=None, quantity=None, projection=False):
+        """
+        Function used to generate the halo profile.
+        
+        Args:
+        -----
+        lr:             [array-like]
+                        Log of the radii at which to compute the halo profile, in Mpc
+        *params         []
+                        Log of the free parmeters of the profile model
+        cosm_params     [array-like]
+                        List containing cosmological parameters h, Om, Ol, z of the simulations
+        quantity        [string]
+                        Quantity type of the profile, e.g. MASS or DENSITY
+        projection      [bool]
+                        Set to True to consider the 2D projected version of the profile, otherwise consider the 3D one
+                        
+        Returns:
+        --------
+        profile         [array]
+                        Halo profile computed at the specified radii
+        """
+        
         if self.custom_profile is None:
             return HaloProfile(lr, *params, cosm_params=cosm_params, profile_model=self.name, quantity_type=quantity, projection=projection)
             
@@ -37,30 +64,28 @@ class HaloModel:
 
 def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_type="MASS", projection=False):
     """
-    This function returns a halo mass or density profile at the specified radius, either NFW or gNFW.
+    This function returns a halo mass, density or circular velocity profile at the specified radius, either NFW or gNFW.
     
     Args:
     -----
-    r:     [float]
-           Halo profile radii in Mpc
-    lr200:  [float]
-            Log of the halo r200 in Mpc
-    lrs:    [float]
-            Log of the alo scale radius in Mpc
-    lgamma: [float]
-            Log of the gNFW gamma exponent (it's 0. for NFW)
-    cosm_pars:     [float array]
-                   Array containing cosmological parameters (h, omega matter, omega lambda, redshift)
-    profile_model: [string]
-                   Profile model to return: NFW, GNFW
-    quantity_type: [string]
-                   Profile type to return: MASS, DENSITY
+    lr:                     [array-like]
+                            Log of the radii at which to compute the halo profile, in Mpc
+    *free_params            []
+                            Log of the free parmeters of the profile model
+    cosm_params             [array-like]
+                            List containing cosmological parameters [h, Om, Ol, z] of the simulations
+    quantity                [string]
+                            Quantity type of the profile, e.g. MASS or DENSITY
+    projection              [bool]
+                            Set to True to consider the 2D projected version of the profile, otherwise consider the 3D one
 
     Returns:
     --------
-    profile: [float]
-             Value of the selected profile at a given radius, in Msun for MASS profile, Msun/Mpc^3 for DENSITY profile and km/s for VCIRC profile
+    profile:                [float]
+                            Value of the selected profile at a given radius.
+                            In Msun for MASS profile, Msun/Mpc^3 for DENSITY profile and km/s for VCIRC profile
     """
+    
     #Define G
     G_mpc = 4.302e-9    #In Msun^-1 * Mpc * km^2 * s^-2
     
@@ -71,7 +96,7 @@ def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_typ
     r = 10**lr
     free_pars = np.atleast_1d(free_params)
 
-    #Compute either mass, density or circular velocity for the NFW profile   
+    #Compute either mass, density or circular velocity for the NFW profile, either 3D or 2D
     if profile_model.upper() == "NFW":
         r200, rs = 10**free_pars
         c200 = r200 / rs
@@ -135,7 +160,7 @@ def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_typ
         elif quantity_type.upper() == "VCIRC":
             return np.sqrt((np.log(1 + x) - x / (1 + x)) / fac200 * M200 * G_mpc / r)
 
-    #Compute either mass, density or circular velocity for the gNFW profile
+    #Compute either mass, density or circular velocity for the gNFW profile, either 3D or 2D
     elif profile_model.upper() == "GNFW":
         r200, rs, gamma = 10**free_pars
         M200 = 100 * H2z / G_mpc * r200**3
@@ -161,6 +186,27 @@ def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_typ
 
 
 def RestoreSavestates(sim_name, sim_type):
+    """
+    Function that loads all savestate data for the binned profiles into dictionaries.
+
+    Args:
+    -----
+    sim_name:           [string]
+                        Name of the simulation to load (see README)
+    sim_type:           [string]
+                        Name of the simulation type to load (see README).
+    
+    Returns:
+    -------
+    halo_profiles:    [dict]
+                      Nested dictionary containing all mass, density and velocity profiles, both 3D and 2D
+    halo_props:       [dict]
+                      Contains all halo IDs and the simulation regions they belong to, along with their r200 and r500 in Mpc
+    sim_props:        [dict]
+                      Contains the number of halos in each simulation region and in total, the mass of a particle 
+                      and the cosmological parameters [h, Om, Ol, z]
+    """
+    
     profile_dims=["3D", "2D"]
     
     halo_profiles = {dim: dict() for dim in profile_dims}
@@ -230,6 +276,40 @@ def RestoreSavestates(sim_name, sim_type):
 
 def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], dimensions=[], 
                 enable_savestates=False, Ntoread=None, enable_multiprocessing=False):
+    """
+    This function reads the HDF5 files of a given simulation and returns the corresponding profiles and simulation properties
+    in nested dictionaries.
+    
+    Args:
+    -----
+    hdf5_path:                  [string]
+                                Relative path of the directory containing the simulation folders (see README)
+    sim_name:                   [string]
+                                Name of the simulation, assigned to the top-level directory (see README)
+    sim_type:                   [string]
+                                Simulation model from which to extract the halo profiles (see README)
+    sim_regions                 [string list]
+                                Names of the region folders to read, leave empty [""] for no regions
+    dimensions                  [string list]
+                                Projections of the 2D profiles to extract, e.g. ["x", "y", "z"], leave empty [] for no 2D profiles
+    enable_savestates           [bool]
+                                True to enable saving progress after each batch reading (see README)
+    Ntoread                     [int list]
+                                Number of files to read at once in each region, can be a single int instead of a list to apply the same number 
+                                to all regions
+    enable_multiprocessing      [bool]
+                                True to enable multiprocessing (see README), used in this function only for printing purposes
+                                
+    Returns:
+    --------
+    profiles:         [dict]
+                      Nested dictionary containing all mass, density and velocity profiles, both 3D and 2D
+    halo_props:       [dict]
+                      Contains all halo IDs and the simulation regions they belong to, along with their r200 and r500 in Mpc
+    sim_props:        [dict]
+                      Contains the number of halos in each simulation region and in total, the mass of a particle 
+                      and the cosmological parameters [h, Om, Ol, z]
+    """
                 
     if enable_multiprocessing:
         print("STARTED PROCESS " + str(os.getpid()) + " WORKING ON " + sim_type)
@@ -240,7 +320,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
     #Halo profiles dictionaries
     halo_profiles_3D = {"MASS": [], "DENSITY": [], "VCIRC": [], "BETA": [], "NUM": [], "CUM_NUM": [], 
                      "SIGMAr": [], "SIGMAt": [], "SIGMAp": [], "ERR_MASS": [], "ERR_DENSITY": [], "ERR_VCIRC": [], "R": []}
-    halo_profiles_2D = {dim: {"MASS": [], "DENSITY": [], "DEN_CUM": [], "DELTA_SIGMA": [], "NUM": [], "CUMNUM": [], "ERR_MASS": [], 
+    halo_profiles_2D = {dim: {"MASS": [], "DENSITY": [], "DEN_CUM": [], "DELTA_SIGMA": [], "NUM": [], "CUM_NUM": [], "ERR_MASS": [], 
                                    "ERR_DENSITY": [], "ERR_DEN_CUM": [], "ERR_DSIGMA": [], "R": []} for dim in dimensions}
     halo_props = {"ID": [], "REGION": [], "R500": [], "R200": []}
     sim_props = {"HALO_NUM_TOT": None, "HALO_NUM_REGION": {reg: None for reg in sim_regions}, "MPART": None, "COSM_PARS": None}
@@ -264,7 +344,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
         Nhalos_region = 0
         
         #HDF5 file names
-        basename = hdf5_path + sim_name + "/" + region + "/" + sim_type
+        basename = sim_name + "/" + region + "/" + sim_type
         file_names = [os.path.normpath(f) for f in glob.glob(basename + "/*.hdf5")]
         
         if enable_savestates:
@@ -442,7 +522,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
                 filenames_done.append(h5_file_name)
                 
                 #Create a save file with the current progress
-                np.savetxt(distname + "/" + "filenames.txt", filenames_done, fmt="%s")
+                np.savetxt("progress/" + sim_name + "/savestates/filenames.txt", filenames_done, fmt="%s")
 
     #####################################################################################################################
 
@@ -487,6 +567,49 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
 def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regions=[""], dimensions=[],
                     save_to_file=False, load_from_file=False, save_data_path="",
                     enable_savestates=False, Ntoread=None, enable_multiprocessing=False):
+    """
+    This function reads the HDF5 files of all supplied simulations and returns the corresponding profiles and simulation properties
+    in nested dictionaries.
+    It is a wrapper of the GetProfiles function, allowing for reading of multiple simulation types at once, 
+    saving and loading all data to file and multiprocessing of multiple simulation types at once.
+    
+    Args:
+    -----
+    hdf5_path:                  [string]
+                                Relative path of the directory containing the simulation folders (see README)
+    sim_name:                   [string]
+                                Name of the simulation, assigned to the top-level directory (see README)
+    simulation_type:            [string]
+                                Simulation model from which to extract the halo profiles (see README)
+    sim_regions                 [string list]
+                                Names of the region folders to read, leave empty [""] for no regions
+    dimensions                  [string list]
+                                Projections of the 2D profiles to extract, e.g. ["x", "y", "z"], leave empty [] for no 2D profiles
+    save_to_file                [bool]
+                                True to save all read data to a file, different from enable_savestates
+    load_from_file              [bool]
+                                Set to True to load halo profiles from a saved file instead of reading and from zero.
+                                Only useful if the data was saved using save_data = True prior, otherwise does nothing
+    save_data_path              [string]
+                                Path to save the data to if save_data is enabled
+    enable_savestates           [bool]
+                                True to enable saving progress after each batch reading (see README)
+    Ntoread                     [int list]
+                                Number of files to read at once in each region, can be a single int instead of a list to apply the same number 
+                                to all regions
+    enable_multiprocessing      [bool]
+                                True to enable multiprocessing (see README)
+
+    Returns:
+    --------
+    halo_profiles:    [dict]
+                      Nested dictionary containing all mass, density and velocity profiles, both 3D and 2D
+    halo_props:       [dict]
+                      Contains all halo IDs and the simulation regions they belong to, along with their r200 and r500 in Mpc
+    sim_props:        [dict]
+                      Contains the number of halos in each simulation region and in total, the mass of a particle 
+                      and the cosmological parameters [h, Om, Ol, z]
+    """
 
     halo_profiles = {sim_type: dict() for sim_type in simulation_type}
     halo_props = {sim_type: dict() for sim_type in simulation_type}
@@ -528,6 +651,26 @@ def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regi
 
 
 def RestoreSavestatesFits(sim_name, sim_type):
+    """
+    Function that loads all savestate data for the profile fits into dictionaries.
+
+    Args:
+    -----
+    sim_name:           [string]
+                        Name of the simulation name to load
+    sim_type:           [string]
+                        Name of the simulation type to load.
+    
+    Returns:
+    -------
+    fit_pars:         [dict]
+                      Nested dictionary containing all free parameters of all fitted models, along with chi2 and M200 in Mpc, 
+                      both for 3D and 2D fits
+    fit_cov:          [dict]
+                      Nested dictionary containing all covariances of all free parameters for evry fitted models, 
+                      both for 3D and 2D fits
+    """
+
     profile_dims=["3D", "2D"]
 
     fit_pars = {dim: dict() for dim in profile_dims}
@@ -555,7 +698,42 @@ def RestoreSavestatesFits(sim_name, sim_type):
 
 def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500, 
                   cosm_params, radius_fit_bounds=[(0., np.inf)], profile_type=["NFW"], profile_quantity=["MASS"], projection=False):
-
+    """
+    This function performs 3D and 2D fits of halo profiles from a supplied simulation type.
+    The fits are performed using non-linear least squares through the SciPy function curve_fit.
+    
+    Args:
+    -----
+    binned_profiles:          [array]
+                              Array of halo profiles to fit, either 3D or 2D mass, density or circular velocity profiles
+    profile_errors:           [array]
+                              Array of binned profiles uncertainties, either for 3D or 2D mass, density or circular velocity profiles
+    bin_centers:              [array]
+                              Array of radial bin centers associated to the binned profiles, in units of r500
+    num_profiles:             [array]
+                              Array of number of particles in each radial bin, used to discard any empty bins when fitting
+    R500:                     [array]
+                              Array of halo r500, in Mpc
+    cosm_params:              [list]
+                              Cosmological parameters [h, Om, Ol, z] for the supplied simulation type
+    radius_fit_bounds:        [array_like of tuples]
+                              Radius interval in which to fit, specified for each model to fit.
+                              Each tuple should contain the lower and upper radial bounds over which to fit
+    profile_type:             [string list]
+                              List containing the types of halo models to fit, e.g. ["NFW", "gNFW"]
+    profile_quantity          [string list]
+                              List containing the quantities to fit, e.g. ["MASS", "DENSITY"]
+    projection                [bool]
+                              Set to True to fit the corresponding profile_type projected profile, instead of the 3D ones
+                              
+    Returns:
+    --------
+    fit_pars:         [dict]
+                      Nested dictionary containing all free parameters of all fitted models, along with chi2 and M200 in Mpc
+    fit_cov:          [dict]
+                      Nested dictionary containing all covariances of all free parameters for evry fitted models
+    """
+    
     #Define G
     G_mpc = 4.302e-9    #In Msun^-1 * Mpc * km^2 * s^-2
     
@@ -668,11 +846,71 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
 
 
 def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simulation_name=None,
-                    profile_type_3D=["NFW"], profile_type_2D=["NFW"], fit_quantities=["MASS"],
+                    profile_type_3D=["NFW"], profile_type_2D=["NFW"], 
+                    fit_quantities_3D=["MASS"], fit_quantities_2D=["MASS"],
                     radius_fit_bounds_3D=[(0., np.inf)], radius_fit_bounds_2D=[(0., np.inf)],
                     n_dim_fits=["3D", "2D"], dimensions=["x", "y", "z"],
                     save_to_file=False, load_from_file=False, save_data_path="", enable_savestates=False,
                     enable_multiprocessing=False):
+    """
+    This function performs 3D and 2D fits of halo profiles from a supplied simulation type.
+    The fits are performed using non-linear least squares through the SciPy function curve_fit.
+    It is a wrapper for the FitProfiles function, allowing for reading of multiple simulation types at once, 
+    saving and loading all data to file, and creation of savestates.
+    
+    Args:
+    -----
+    halo_profiles:              [dict]
+                                Nested dictionary containing all mass, density and velocity profiles, both 3D and 2D
+    halo_props:                 [dict]
+                                Contains all halo IDs and the simulation regions they belong to, along with their r200 and r500 in Mpc
+    sim_props:                  [dict]
+                                Contains the number of halos in each simulation region and in total, the mass of a particle 
+                                and the cosmological parameters [h, Om, Ol, z]
+    simulation_type:            [string list]
+                                List containing the simulation types to consider (see README)
+    simulation_name:            [array]
+                                Name of the simulation to consider (see README)
+    profile_type_3D:            [string list]
+                                List containing the types of 3D halo models to fit, e.g. ["NFW", "gNFW"]
+    profile_type_2D:            [string list]
+                                List containing the types of 2D halo models to fit, e.g. ["NFW", "gNFW"]
+    fit_quantities_3D:          [string list]
+                                List containing the 3D quantities to fit, e.g. ["MASS", "DENSITY"]
+    fit_quantities_2D:          [string list]
+                                List containing the 2D quantities to fit, e.g. ["MASS", "DENSITY"]
+    radius_fit_bounds_3D:       [array_like of tuples]
+                                Radius interval in which to fit, specified for each 3D model to fit.
+                                Each tuple should contain the lower and upper radial bounds over which to fit
+    radius_fit_bounds_2D:       [array_like of tuples]
+                                Radius interval in which to fit, specified for each 2D model to fit.
+                                Each tuple should contain the lower and upper radial bounds over which to fit
+    n_dim_fits:                 [string list]
+                                Dimensions to consider, e.g. ["3D", "2D"]
+    dimensions                  [string list]
+                                Projections of the 2D profiles to consider, e.g. ["x", "y", "z"], leave empty [] for no 2D profiles
+    save_to_file                [bool]
+                                True to save all read data to a file, different from enable_savestates
+    load_from_file              [bool]
+                                Set to True to load halo profiles from a saved file instead of reading and from zero.
+                                Only useful if the data was saved using save_data = True prior, otherwise does nothing
+    save_data_path              [string]
+                                Path to save the data to if save_data is enabled
+    enable_savestates           [bool]
+                                True to enable saving progress after each batch reading (see README)
+    Ntoread                     [int list]
+                                Number of files to read at once in each region, can be a single int instead of a list to apply the same number 
+                                to all regions
+    enable_multiprocessing      [bool]
+                                True to enable multiprocessing (see README), used in this function for printing purposes only
+
+    Returns:
+    --------
+    fit_pars:         [dict]
+                      Nested dictionary containing all free parameters of all fitted models, along with chi2 and M200 in Mpc
+    fit_cov:          [dict]
+                      Nested dictionary containing all covariances of all free parameters for evry fitted models
+    """
                 
     if enable_multiprocessing:
         print("STARTED PROCESS " + str(os.getpid()) + " WORKING ON " + simulation_type[0])
@@ -718,7 +956,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                         fit_cov[sim_type][n_dim] = FitProfiles(binned_profiles_fit, binned_errors_fit, 
                                                                 binned_profiles["R"], binned_profiles["NUM"], R500, 
                                                                 cosm_params, radius_fit_bounds_3D, profile_type_3D, 
-                                                                profile_quantity=fit_quantities, projection=False)
+                                                                profile_quantity=fit_quantities_3D, projection=False)
                                                             
                     if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) and enable_savestates:
                         #Save current progress to file in the "progress" folder
@@ -739,7 +977,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                             fit_cov[sim_type][n_dim][dim] = FitProfiles(binned_profiles_fit, binned_errors_fit, 
                                                                         binned_profiles[dim]["R"], binned_profiles[dim]["NUM"], 
                                                                         R500, cosm_params, radius_fit_bounds_2D, profile_type_2D, 
-                                                                        profile_quantity=fit_quantities, projection=True)
+                                                                        profile_quantity=fit_quantities_2D, projection=True)
                                                                         
                         if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) and enable_savestates:
                             #Save current progress to file in the "progress" folder
@@ -759,11 +997,70 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
 
 
 def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simulation_name=None,
-                    profile_type_3D=["NFW"], profile_type_2D=["NFW"], fit_quantities=["MASS"],
+                    profile_type_3D=["NFW"], profile_type_2D=["NFW"],
+                    fit_quantities_3D=["MASS"], fit_quantities_2D=["MASS"],
                     radius_fit_bounds_3D=[(0., np.inf)], radius_fit_bounds_2D=[(0., np.inf)],
                     n_dim_fits=["3D", "2D"], dimensions=["x", "y", "z"],
                     save_to_file=False, load_from_file=False, save_data_path="", enable_savestates=False, 
                     enable_multiprocessing=False):
+    """
+    This function performs 3D and 2D fits of halo profiles from a supplied simulation type.
+    The fits are performed using non-linear least squares through the SciPy function curve_fit.
+    It is a wrapper for the FitSimProfiles function, allowing for multiprocessing of multiple simulation types at once.
+    
+    Args:
+    -----
+    halo_profiles:              [dict]
+                                Nested dictionary containing all mass, density and velocity profiles, both 3D and 2D
+    halo_props:                 [dict]
+                                Contains all halo IDs and the simulation regions they belong to, along with their r200 and r500 in Mpc
+    sim_props:                  [dict]
+                                Contains the number of halos in each simulation region and in total, the mass of a particle 
+                                and the cosmological parameters [h, Om, Ol, z]
+    simulation_type:            [string list]
+                                List containing the simulation types to consider (see README)
+    simulation_name:            [array]
+                                Name of the simulation to consider (see README)
+    profile_type_3D:            [string list]
+                                List containing the types of 3D halo models to fit, e.g. ["NFW", "gNFW"]
+    profile_type_2D:            [string list]
+                                List containing the types of 2D halo models to fit, e.g. ["NFW", "gNFW"]
+    fit_quantities_3D:          [string list]
+                                List containing the 3D quantities to fit, e.g. ["MASS", "DENSITY"]
+    fit_quantities_2D:          [string list]
+                                List containing the 2D quantities to fit, e.g. ["MASS", "DENSITY"]
+    radius_fit_bounds_3D:       [array_like of tuples]
+                                Radius interval in which to fit, specified for each 3D model to fit.
+                                Each tuple should contain the lower and upper radial bounds over which to fit
+    radius_fit_bounds_2D:       [array_like of tuples]
+                                Radius interval in which to fit, specified for each 2D model to fit.
+                                Each tuple should contain the lower and upper radial bounds over which to fit
+    n_dim_fits:                 [string list]
+                                Dimensions to consider, e.g. ["3D", "2D"]
+    dimensions                  [string list]
+                                Projections of the 2D profiles to consider, e.g. ["x", "y", "z"], leave empty [] for no 2D profiles
+    save_to_file                [bool]
+                                True to save all read data to a file, different from enable_savestates
+    load_from_file              [bool]
+                                Set to True to load halo profiles from a saved file instead of reading and from zero.
+                                Only useful if the data was saved using save_data = True prior, otherwise does nothing
+    save_data_path              [string]
+                                Path to save the data to if save_data is enabled
+    enable_savestates           [bool]
+                                True to enable saving progress after each batch reading (see README)
+    Ntoread                     [int list]
+                                Number of files to read at once in each region, can be a single int instead of a list to apply the same number 
+                                to all regions
+    enable_multiprocessing      [bool]
+                                True to enable multiprocessing (see README)
+
+    Returns:
+    --------
+    fit_pars:         [dict]
+                      Nested dictionary containing all free parameters of all fitted models, along with chi2 and M200 in Mpc
+    fit_cov:          [dict]
+                      Nested dictionary containing all covariances of all free parameters for evry fitted models
+    """
                     
     fit_pars = dict()
     fit_cov = dict()
@@ -779,7 +1076,7 @@ def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simu
             
         with mp.Pool(len(simulation_type)) as pool:
             results = pool.starmap(FitSimProfiles, [(halo_profiles, halo_props, sim_props, [sim_type], simulation_name,
-                                                    profile_type_3D, profile_type_2D, fit_quantities,
+                                                    profile_type_3D, profile_type_2D, fit_quantities_3D, fit_quantities_2D,
                                                     radius_fit_bounds_3D, radius_fit_bounds_2D,
                                                     n_dim_fits, dimensions,
                                                     False, False, "",
@@ -795,7 +1092,7 @@ def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simu
             
     else:
         fit_pars, fit_cov = HaloReadH5.FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simulation_name,
-                                                      profile_type_3D, profile_type_2D, fit_quantities,
+                                                      profile_type_3D, profile_type_2D, fit_quantities_3D, fit_quantities_2D,
                                                       radius_fit_bounds_3D, radius_fit_bounds_2D,
                                                       n_dim_fits, dimensions,
                                                       save_data, load_from_file, save_data_path, 
@@ -805,6 +1102,45 @@ def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simu
 
 
 def ApplyCondition(halo_profiles, fit_pars, fit_cov, halo_props, sim_props, condition, sim_type, dimensions=[]):
+    """
+    Function that applies a supplied condition to every dictionary of a given simulation.
+    
+    Args:
+    -----
+    halo_profiles:    [dict]
+                      Nested dictionary containing all mass, density and velocity profiles, both 3D and 2D
+    fit_pars:         [dict]
+                      Nested dictionary containing all free parameters of all fitted models, along with chi2 and M200 in Mpc, 
+                      both for 3D and 2D fits
+    fit_cov:          [dict]
+                      Nested dictionary containing all covariances of all free parameters for evry fitted models, 
+                      both for 3D and 2D fits
+    halo_props:       [dict]
+                      Contains all halo IDs and the simulation regions they belong to, along with their r200 and r500 in Mpc
+    sim_props:        [dict]
+                      Contains the number of halos in each simulation region and in total, the mass of a particle 
+                      and the cosmological parameters [h, Om, Ol, z]
+    condition         [bool array]
+                      Mask to apply to the samples, must have the same dimensions of the halo profile arrays
+    sim_type:         [string]
+                      Simulation to apply the condiditon to
+    dimensions:       [string list]
+                      Projections of the 2D profiles, e.g. ["x", "y", "z"], leave empty [] for no 2D profiles
+                      
+    Returns:
+    -------
+    out_profiles      [dict]
+                      Similar to halo_profiles, but after applying the condition
+    out_pars          [dict]
+                      Similar to fit_pars, but after applying the condition
+    out_cov           dict]
+                      Similar to fit_cov, but after applying the condition
+    out_props         [dict]
+                      Similar to halo_props, but after applying the condition
+    out_sim_props     [dict]
+                      Similar to sim_props, but after applying the condition
+    """
+
     #Define new profiles
     out_profiles = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}}}
     out_pars = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}}}
