@@ -12,8 +12,9 @@ import time
 
 
 class HaloModel:
-    def __init__(self, name):
+    def __init__(self, name, custom_profile=None, free_par_names=None, fit_bounds=None):
         self.name = name
+        self.custom_profile = custom_profile
         
         if name.upper() == "NFW":
             free_par_names = ["r200", "rs"]
@@ -26,8 +27,12 @@ class HaloModel:
         self.free_par_names = free_par_names
 
 
-    def _profile(self, lr, *params, cosm_params, quantity, projection=False):
-        return HaloProfile(lr, *params, cosm_params=cosm_params, profile_model=self.name, quantity_type=quantity, projection=projection)
+    def _profile(self, lr, *params, cosm_params=None, quantity=None, projection=False):
+        if self.custom_profile is None:
+            return HaloProfile(lr, *params, cosm_params=cosm_params, profile_model=self.name, quantity_type=quantity, projection=projection)
+            
+        else:
+            return self.custom_profile(lr, *params, cosm_params, quantity)
 
 
 def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_type="MASS", projection=False):
@@ -299,7 +304,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
             file_max = len(filenames_remaining) + 1
 
         else:
-            if len(Ntoread) == 0:
+            if len(np.atleast_1d(Ntoread)) == 1:
                 file_max = Ntoread
                 
             else:
@@ -498,7 +503,7 @@ def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regi
             
     else:
         if enable_multiprocessing:
-            with mp.Pool(len(simulation_type)) as pool:
+            with mp.Pool(len(np.atleast_1d(simulation_type))) as pool:
                 results = pool.starmap(GetProfiles, [(hdf5_path, sim_name, sim_type, sim_regions, dimensions, 
                                                     enable_savestates, Ntoread, enable_multiprocessing) 
                                                     for sim_type in simulation_type])
@@ -666,7 +671,11 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                     profile_type_3D=["NFW"], profile_type_2D=["NFW"], fit_quantities=["MASS"],
                     radius_fit_bounds_3D=[(0., np.inf)], radius_fit_bounds_2D=[(0., np.inf)],
                     n_dim_fits=["3D", "2D"], dimensions=["x", "y", "z"],
-                    save_to_file=False, load_from_file=False, save_data_path="", enable_savestates=False):
+                    save_to_file=False, load_from_file=False, save_data_path="", enable_savestates=False,
+                    enable_multiprocessing=False):
+                
+    if enable_multiprocessing:
+        print("STARTED PROCESS " + str(os.getpid()) + " WORKING ON " + simulation_type[0])
                 
     fit_pars = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}} for sim_type in simulation_type}
     fit_cov = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}} for sim_type in simulation_type}
@@ -680,7 +689,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
             fit_cov = file_saved["fit_cov"].item()
 
     else:
-        for sim_type in np.atleast_1d(simulation_type):
+        for sim_type in simulation_type:
             dirpath = "progress/" + simulation_name + "/savestates_fits/" + sim_type
 
             print("CURRENT SIMULATION: " + sim_type)
@@ -693,7 +702,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
             R500 = halo_props[sim_type]["R500"]
             cosm_params = sim_props[sim_type]["COSM_PARS"]
             
-            for n_dim in np.atleast_1d(n_dim_fits):
+            for n_dim in n_dim_fits:
                 binned_profiles = halo_profiles[sim_type][n_dim]
                 
                 if n_dim == "3D":
@@ -717,7 +726,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                                                                             fit_cov=fit_cov[sim_type][n_dim])
 
                 elif n_dim == "2D":
-                    for dim in np.atleast_1d(dimensions):
+                    for dim in dimensions:
                         save_name = "save_state_2D" + dim + ".npz"
                     
                         if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)):
@@ -742,71 +751,129 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
 
     if save_to_file and ( (not load_from_file) or (not os.path.isfile(save_data_path + "/halo_fits.npz")) ):
         np.savez(save_data_path + "/halo_fits.npz", fit_pars=fit_pars, fit_cov=fit_cov)
+        
+    if enable_multiprocessing:
+        print("FINISHED PROCESS " + str(os.getpid()) + " WORKING ON " + simulation_type[0])
 
     return fit_pars, fit_cov
 
 
-def ApplyCondition(halo_profiles, fit_pars, fit_cov, halo_props, condition, simulation_type, dimensions=[]):
+def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simulation_name=None,
+                    profile_type_3D=["NFW"], profile_type_2D=["NFW"], fit_quantities=["MASS"],
+                    radius_fit_bounds_3D=[(0., np.inf)], radius_fit_bounds_2D=[(0., np.inf)],
+                    n_dim_fits=["3D", "2D"], dimensions=["x", "y", "z"],
+                    save_to_file=False, load_from_file=False, save_data_path="", enable_savestates=False, 
+                    enable_multiprocessing=False):
+                    
+    fit_pars = dict()
+    fit_cov = dict()
+                    
+    if enable_multiprocessing:
+        if save_data_path == "":
+            save_data_path = "progress/" + simulation_name
+
+        if load_from_file and os.path.isfile(save_data_path + "/halo_fits.npz"):
+            with np.load(save_data_path + "/halo_fits.npz", allow_pickle=True) as file_saved:
+                fit_pars = file_saved["fit_pars"].item()
+                fit_cov = file_saved["fit_cov"].item()
+            
+        with mp.Pool(len(simulation_type)) as pool:
+            results = pool.starmap(FitSimProfiles, [(halo_profiles, halo_props, sim_props, [sim_type], simulation_name,
+                                                    profile_type_3D, profile_type_2D, fit_quantities,
+                                                    radius_fit_bounds_3D, radius_fit_bounds_2D,
+                                                    n_dim_fits, dimensions,
+                                                    False, False, "",
+                                                    enable_savestates, enable_multiprocessing) 
+                                                    for sim_type in simulation_type])
+                                                    
+            for sim_type, res in zip(simulation_type, results):
+                fit_pars[sim_type] = res[0][sim_type]
+                fit_cov[sim_type] = res[1][sim_type]
+            
+        if save_to_file and ( (not load_from_file) or (not os.path.isfile(save_data_path + "/halo_fits.npz")) ):
+            np.savez(save_data_path + "/halo_fits.npz", fit_pars=fit_pars, fit_cov=fit_cov)
+            
+    else:
+        fit_pars, fit_cov = HaloReadH5.FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simulation_name,
+                                                      profile_type_3D, profile_type_2D, fit_quantities,
+                                                      radius_fit_bounds_3D, radius_fit_bounds_2D,
+                                                      n_dim_fits, dimensions,
+                                                      save_data, load_from_file, save_data_path, 
+                                                      enable_savestates, enable_multiprocessing)
+                                                      
+    return fit_pars, fit_cov
+
+
+def ApplyCondition(halo_profiles, fit_pars, fit_cov, halo_props, sim_props, condition, sim_type, dimensions=[]):
     #Define new profiles
-    out_profiles = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}} for sim_type in np.atleast_1d(simulation_type)}
-    
-    out_pars = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}} for sim_type in np.atleast_1d(simulation_type)}
-                
-    out_cov = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}} for sim_type in np.atleast_1d(simulation_type)}
-                
-    out_props = {sim_type: dict() for sim_type in np.atleast_1d(simulation_type)}
+    out_profiles = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}}}
+    out_pars = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}}}
+    out_cov = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}}}
+    out_props = {sim_type: dict()}
+    out_sim_props = {sim_type: dict.fromkeys(sim_props[sim_type], dict())}
     
     #Apply condition
-    for sim_type in np.atleast_1d(simulation_type):
-        n_dim_fits = list(halo_profiles[sim_type].keys())
+    n_dim_fits = list(halo_profiles[sim_type].keys())
 
-        #3D profiles
+    #3D profiles
+    if "3D" in n_dim_fits:
         for key in list(halo_profiles[sim_type]["3D"].keys()):
             out_profiles[sim_type]["3D"][key] = halo_profiles[sim_type]["3D"][key][condition]
-
-        if "3D" in n_dim_fits:
-            #3D fits
-            for p_type in list(fit_pars[sim_type]["3D"].keys()):
-                profile_quantity = list(fit_pars[sim_type]["3D"][p_type].keys())
-                
-                out_pars[sim_type]["3D"][p_type] = dict()
-                out_cov[sim_type]["3D"][p_type] = dict()
-                
-                for quantity in profile_quantity:
-                    out_pars[sim_type]["3D"][p_type][quantity] = dict()
-                    out_cov[sim_type]["3D"][p_type][quantity] = dict()
-                    
-                    for key in list(fit_pars[sim_type]["3D"][p_type][quantity].keys()):
-                        out_pars[sim_type]["3D"][p_type][quantity][key] = fit_pars[sim_type]["3D"][p_type][quantity][key][condition]
-
-                    for key in list(fit_cov[sim_type]["3D"][p_type][quantity].keys()):
-                        out_cov[sim_type]["3D"][p_type][quantity][key] = fit_cov[sim_type]["3D"][p_type][quantity][key][condition]
-
-        #2D profiles
-        for dim in dimensions:
-            for key in list(halo_profiles[sim_type]["2D"][dim].keys()):
-                out_profiles[sim_type]["2D"][dim][key] = halo_profiles[sim_type]["2D"][dim][key][condition]
-
-            if "2D" in n_dim_fits:
-                #2D fits
-                for p_type in list(fit_pars[sim_type]["2D"][dim].keys()):
-                    profile_quantity = list(fit_pars[sim_type]["2D"][dim][p_type].keys())
-                    
-                    out_pars[sim_type]["2D"][dim][p_type] = dict()
-                    out_cov[sim_type]["2D"][dim][p_type] = dict()
-                
-                    for quantity in profile_quantity:
-                        out_pars[sim_type]["2D"][dim][p_type][quantity] = dict()
-                        out_cov[sim_type]["2D"][dim][p_type][quantity] = dict()
-                    
-                        for key in list(fit_pars[sim_type]["2D"][dim][p_type][quantity].keys()):
-                            out_pars[sim_type]["2D"][dim][p_type][quantity][key] = fit_pars[sim_type]["2D"][dim][p_type][quantity][key][condition]
-                    
-                        for key in list(fit_cov[sim_type]["2D"][dim][p_type][quantity].keys()):
-                            out_cov[sim_type]["2D"][dim][p_type][quantity][key] = fit_cov[sim_type]["2D"][dim][p_type][quantity][key][condition]
-
-            #Halo and simulation properties
-            for key in list(halo_props[sim_type].keys()):
-                out_props[sim_type][key] = halo_props[sim_type][key][condition]
+        
+        #3D fits
+        for p_type in list(fit_pars[sim_type]["3D"].keys()):
+            profile_quantity = list(fit_pars[sim_type]["3D"][p_type].keys())
             
-    return out_profiles, out_pars, out_cov, out_props
+            out_pars[sim_type]["3D"][p_type] = dict()
+            out_cov[sim_type]["3D"][p_type] = dict()
+            
+            for quantity in profile_quantity:
+                out_pars[sim_type]["3D"][p_type][quantity] = dict()
+                out_cov[sim_type]["3D"][p_type][quantity] = dict()
+                
+                for key in list(fit_pars[sim_type]["3D"][p_type][quantity].keys()):
+                    out_pars[sim_type]["3D"][p_type][quantity][key] = fit_pars[sim_type]["3D"][p_type][quantity][key][condition]
+
+                for key in list(fit_cov[sim_type]["3D"][p_type][quantity].keys()):
+                    out_cov[sim_type]["3D"][p_type][quantity][key] = fit_cov[sim_type]["3D"][p_type][quantity][key][condition]
+
+    #2D profiles
+    for dim in dimensions:
+        for key in list(halo_profiles[sim_type]["2D"][dim].keys()):
+            out_profiles[sim_type]["2D"][dim][key] = halo_profiles[sim_type]["2D"][dim][key][condition]
+
+        if "2D" in n_dim_fits:
+            #2D fits
+            for p_type in list(fit_pars[sim_type]["2D"][dim].keys()):
+                profile_quantity = list(fit_pars[sim_type]["2D"][dim][p_type].keys())
+                
+                out_pars[sim_type]["2D"][dim][p_type] = dict()
+                out_cov[sim_type]["2D"][dim][p_type] = dict()
+            
+                for quantity in profile_quantity:
+                    out_pars[sim_type]["2D"][dim][p_type][quantity] = dict()
+                    out_cov[sim_type]["2D"][dim][p_type][quantity] = dict()
+                
+                    for key in list(fit_pars[sim_type]["2D"][dim][p_type][quantity].keys()):
+                        out_pars[sim_type]["2D"][dim][p_type][quantity][key] = fit_pars[sim_type]["2D"][dim][p_type][quantity][key][condition]
+                
+                    for key in list(fit_cov[sim_type]["2D"][dim][p_type][quantity].keys()):
+                        out_cov[sim_type]["2D"][dim][p_type][quantity][key] = fit_cov[sim_type]["2D"][dim][p_type][quantity][key][condition]
+
+    #Halo and simulation properties
+    for key in list(halo_props[sim_type].keys()):
+        out_props[sim_type][key] = halo_props[sim_type][key][condition]
+
+    for key in list(sim_props[sim_type].keys()):
+        if key == "HALO_NUM_REGION":
+            for region in list(sim_props[sim_type]["HALO_NUM_REGION"].keys()):
+                Nhalos_region = np.sum(out_props[sim_type]["REGION"] == region)
+                out_sim_props[sim_type]["HALO_NUM_REGION"][region] = Nhalos_region
+                
+        elif key == "HALO_NUM_TOT":
+            out_sim_props[sim_type]["HALO_NUM_TOT"] = len(out_props[sim_type]["ID"])
+            
+        else:
+            out_sim_props[sim_type][key] = sim_props[sim_type]["COSM_PARS"]
+
+    return out_profiles, out_pars, out_cov, out_props, out_sim_props
