@@ -372,6 +372,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
             #Path of all hdf5 files in a given simulation folder
             filenames_remaining = []
 
+            #Setup for progress folders and savestates
             if len(glob.glob(distname + "/" + "*.txt")) == 0:
                 filenames_done = []
 
@@ -958,11 +959,11 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                 if n_dim == "3D":
                     save_name = "save_state_3D.npz"
 
-                    if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)):
+                    if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
                         print("DIMENSION: 3D")
                         
-                        binned_profiles_fit = [binned_profiles[quantity] for quantity in fit_quantities]
-                        binned_errors_fit = [binned_profiles["ERR_" + quantity] for quantity in fit_quantities]
+                        binned_profiles_fit = [binned_profiles[quantity] for quantity in fit_quantities_3D]
+                        binned_errors_fit = [binned_profiles["ERR_" + quantity] for quantity in fit_quantities_3D]
                         
                         fit_pars[sim_type][n_dim],\
                         fit_cov[sim_type][n_dim] = FitProfiles(binned_profiles_fit, binned_errors_fit, 
@@ -979,11 +980,11 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                     for dim in dimensions:
                         save_name = "save_state_2D" + dim + ".npz"
                     
-                        if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)):
+                        if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
                             print("DIMENSION: 2D" + dim)
                             
-                            binned_profiles_fit = [binned_profiles[dim][quantity] for quantity in fit_quantities]
-                            binned_errors_fit = [binned_profiles[dim]["ERR_" + quantity] for quantity in fit_quantities]
+                            binned_profiles_fit = [binned_profiles[dim][quantity] for quantity in fit_quantities_2D]
+                            binned_errors_fit = [binned_profiles[dim]["ERR_" + quantity] for quantity in fit_quantities_2D]
                             
                             fit_pars[sim_type][n_dim][dim],\
                             fit_cov[sim_type][n_dim][dim] = FitProfiles(binned_profiles_fit, binned_errors_fit, 
@@ -1103,12 +1104,12 @@ def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simu
             np.savez(save_data_path + "/halo_fits.npz", fit_pars=fit_pars, fit_cov=fit_cov)
             
     else:
-        fit_pars, fit_cov = HaloReadH5.FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simulation_name,
-                                                      profile_type_3D, profile_type_2D, fit_quantities_3D, fit_quantities_2D,
-                                                      radius_fit_bounds_3D, radius_fit_bounds_2D,
-                                                      n_dim_fits, dimensions,
-                                                      save_data, load_from_file, save_data_path, 
-                                                      enable_savestates, enable_multiprocessing)
+        fit_pars, fit_cov = FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simulation_name,
+                                          profile_type_3D, profile_type_2D, fit_quantities_3D, fit_quantities_2D,
+                                          radius_fit_bounds_3D, radius_fit_bounds_2D,
+                                          n_dim_fits, dimensions,
+                                          save_to_file, load_from_file, save_data_path, 
+                                          enable_savestates, enable_multiprocessing)
                                                       
     return fit_pars, fit_cov
 
