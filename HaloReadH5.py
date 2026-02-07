@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.special as spec
 from scipy.optimize import curve_fit
+from scipy.integrate import quad
 from itertools import repeat
 import multiprocessing.pool as mp
 import shutil
@@ -32,7 +33,7 @@ class HaloModel:
         self.free_par_names = free_par_names
 
 
-    def _profile(self, lr, *params, cosm_params=None, quantity=None, projection=False):
+    def profile(self, lr, *params, cosm_params=None, quantity=None, projection=False):
         """
         Function used to generate the halo profile.
         
@@ -112,22 +113,16 @@ def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_typ
                 M_proj = np.zeros_like(x)
             
                 # x < 1
-                mask1 = x < 1
-                acos_arg = 1 / x[mask1]
-                term = np.arccosh(acos_arg)
-                F = (term**1) / np.sqrt(1 - x[mask1]**2)
-                M_proj[mask1] = np.log(x[mask1] / 2) + F
+                mask1 = (x < 1)
+                M_proj[mask1] = np.log(x[mask1] / 2) + np.arccosh(1 / x[mask1]) / np.sqrt(1 - x[mask1]**2)
             
                 # x == 1
-                mask2 = x == 1
-                M_proj[mask2] = 1 - np.log(2)  #This simplifies to 0
+                mask2 = (x == 1)
+                M_proj[mask2] = 1 - np.log(2)
             
                 # x > 1
-                mask3 = x > 1
-                a = 1 / x[mask3]
-                term = np.arccos(a)
-                F = (term**1) / np.sqrt(x[mask3]**2 - 1)
-                M_proj[mask3] = np.log(x[mask3] / 2) + F
+                mask3 = (x > 1)
+                M_proj[mask3] = np.log(x[mask3] / 2) + np.arccos(1 / x[mask3]) / np.sqrt(x[mask3]**2 - 1)
             
                 return 4 * np.pi * rho_s * rs**3 * M_proj
             
@@ -167,16 +162,33 @@ def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_typ
         x = r / rs
         
         if quantity_type.upper() == "MASS":
-            h2x = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r200/rs)
-            h2y = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r/rs)
+            if projection:
+                sigma = lambda R:\
+                        quad(lambda r_3D: 2 * rho_0 / ((r_3D/rs)**(1 - gamma) * (1 + (r_3D/rs))**(3 - gamma)) / np.sqrt(r_3D**2 - R**2),
+                            R, np.inf)[0]
+                        
+                Mproj = [2 * np.pi * quad(lambda R_prime: sigma(R_prime) * R_prime, 0, R)[0] for R in r]
+                        
+                return np.array(Mproj)
+            
+            else:
+                h2x = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r200/rs)
+                h2y = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r/rs)
 
-            return (r / r200)**(3 - gamma) * M200 * h2y / h2x
+                return (r / r200)**(3 - gamma) * M200 * h2y / h2x
 
         elif quantity_type.upper() == "DENSITY":
             h2x = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r200/rs)
             rho_0 = M200 / (4 * np.pi * rs**3) * ((r200/rs)**(3 - gamma) / (3 - gamma) * h2x)**-1
 
-            return rho_0 / (x**gamma * (1 + x)**(3 - gamma))
+            if projection:
+                integral = [quad(lambda r_3D: rho_0 / ((r_3D/rs)**(1 - gamma) * (1 + (r_3D/rs))**(3 - gamma)) / np.sqrt(r_3D**2 - R**2),
+                            R, np.inf) for R in r]
+                            
+                return 2 * integral
+
+            else:
+                return rho_0 / (x**gamma * (1 + x)**(3 - gamma))
 
         elif quantity_type.upper() == "VCIRC":
             h2x = spec.hyp2f1(3-gamma, 3-gamma, 4-gamma, -r200/rs)
@@ -790,7 +802,7 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
                 #Define the NFW and gNFW fit functions with the current cosmology
                 halo_model = HaloModel(p_type)
                 
-                fit_func = lambda lr, *free_p: np.log10(halo_model._profile(lr, *free_p,
+                fit_func = lambda lr, *free_p: np.log10(halo_model.profile(lr, *free_p,
                                                         cosm_params=cosm_params, quantity=quantity, 
                                                         projection=projection))
 
