@@ -14,7 +14,7 @@ import time
 
 class HaloModel:
     """
-    Class used to store information about the halo profile models used in fitting. 
+    Class used to store information about the halo profile models used in fitting more conveniently. 
     By default only NFW and gNFW are available, but more can be added by inserting them here and in the HaloProfile function.
     """
     
@@ -289,7 +289,7 @@ def RestoreSavestates(sim_name, sim_type):
     return halo_profiles, halo_props, sim_props
 
 
-def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], dimensions=[], 
+def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", dimensions=[], 
                 enable_savestates=False, Ntoread=None, enable_multiprocessing=False):
     """
     This function reads the HDF5 files of a given simulation and returns the corresponding profiles and simulation properties
@@ -304,7 +304,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
     sim_type:                   [string]
                                 Simulation model from which to extract the halo profiles (see README)
     sim_regions                 [string list]
-                                Names of the region folders to read, leave empty [""] for no regions
+                                Names of the region folders to read, leave empty if no regions
     dimensions                  [string list]
                                 Projections of the 2D profiles to extract, e.g. ["x", "y", "z"], leave empty [] for no 2D profiles
     enable_savestates           [bool]
@@ -354,7 +354,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
     if (not os.path.exists("progress/" + sim_name + "/savestates/" + sim_type)) and enable_savestates:
         os.makedirs("progress/" + sim_name + "/savestates/" + sim_type)
 
-    for n, region in enumerate(sim_regions):
+    for n, region in enumerate(np.atleast_1d(sim_regions).tolist()):
         #Number of halos in a region
         Nhalos_region = 0
         
@@ -365,7 +365,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
         if enable_savestates:
             #Define the folder where all progress is saved
             distdir = os.getcwd()
-            distname = "progress/" + basename
+            distname = "progress/" + sim_name + "/savestates/filenames_done/" + region + "/" + sim_type
             distot = os.path.join(distdir, distname)
             
             #If the directory doesn't exist, create it
@@ -380,7 +380,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
                 filenames_done = []
 
             else:
-                filenames_done = np.loadtxt(distname + "/" + "filenames.txt", dtype="str", ndmin=1)
+                filenames_done = np.loadtxt(distname + "/filenames.txt", dtype="str", ndmin=1)
 
             if len(filenames_done) != 0:
                 for fnames in file_names:
@@ -492,7 +492,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
     #####################################################################################################################
         
                     #2D halo profiles and corresponding uncertainties
-                    for dim in dimensions:
+                    for dim in np.atleast_1d(dimensions).tolist():
                         bin_centers_2D = data["Group_%i_Radius2D"%ii + dim][:]  #In units of r500
                         MassCum_2D = data["Group_%i_MassCum2D"%ii + dim][:]    #2D cumulative mass in M_sun
                         Den_2D = data["Group_%i_Density2D"%ii + dim][:] / r500c**2    #2D density inside a bin in M_sun/Mpc^2
@@ -538,7 +538,8 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
                 filenames_done.append(h5_file_name)
                 
                 #Create a save file with the current progress
-                np.savetxt("progress/" + sim_name + "/savestates/filenames.txt", filenames_done, fmt="%s")
+                np.savetxt("progress/" + sim_name + "/savestates/filenames_done/" + region + "/" 
+                            + sim_type + "/filenames.txt", filenames_done, fmt="%s")
 
     #####################################################################################################################
 
@@ -568,7 +569,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
         for key in list(halo_profiles_3D.keys()):
             halo_profiles_3D[key] = np.array(halo_profiles_3D[key])
 
-        for dim in dimensions:
+        for dim in np.atleast_1d(dimensions).tolist():
             for key in list(halo_profiles_2D[dim].keys()):
                 halo_profiles_2D[dim][key] = np.array(halo_profiles_2D[dim][key])
 
@@ -580,7 +581,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions=[""], 
         return profiles, halo_props, sim_props
 
 
-def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regions=[""], dimensions=[],
+def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regions="", dimensions=[],
                     save_to_file=False, load_from_file=False, save_data_path="",
                     enable_savestates=False, Ntoread=None, enable_multiprocessing=False):
     """
@@ -598,7 +599,7 @@ def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regi
     simulation_type:            [string]
                                 Simulation model from which to extract the halo profiles (see README)
     sim_regions                 [string list]
-                                Names of the region folders to read, leave empty [""] for no regions
+                                Names of the region folders to read, leave empty "" for no regions
     dimensions                  [string list]
                                 Projections of the 2D profiles to extract, e.g. ["x", "y", "z"], leave empty [] for no 2D profiles
     save_to_file                [bool]
@@ -647,11 +648,11 @@ def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regi
                                                     enable_savestates, Ntoread, enable_multiprocessing) 
                                                     for sim_type in simulation_type])
 
-                for sim_type, res in zip(simulation_type, results):
+                for sim_type, res in zip(np.atleast_1d(simulation_type).tolist(), results):
                     halo_profiles[sim_type], halo_props[sim_type], sim_props[sim_type] = res
         
         else:
-            for sim_type in simulation_type:
+            for sim_type in np.atleast_1d(simulation_type).tolist():
                 halo_profiles[sim_type],\
                 halo_props[sim_type],\
                 sim_props[sim_type] = GetProfiles(hdf5_path, sim_name, sim_type, sim_regions, dimensions, 
@@ -713,7 +714,8 @@ def RestoreSavestatesFits(sim_name, sim_type):
 
 
 def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500, 
-                  cosm_params, radius_fit_bounds=[(0., np.inf)], profile_type=["NFW"], profile_quantity=["MASS"], projection=False):
+                  cosm_params, radius_fit_bounds=[(0., np.inf)], 
+                  profile_type="NFW", profile_quantity="MASS", projection=False):
     """
     This function performs 3D and 2D fits of halo profiles from a supplied simulation type.
     The fits are performed using non-linear least squares through the SciPy function curve_fit.
@@ -765,10 +767,11 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
     h, Om, Ol, z = cosm_params
     H2z = (100 * h)**2 * (Om * (1 + z)**3 + Ol)
 
-    for quantity in profile_quantity:
+    #Initialize dictionaries containing the fit parameters and covariances for each model supplied
+    for quantity in np.atleast_1d(profile_quantity).tolist():
         print("\nNOW FITTING: " + quantity)
         
-        for p_type in profile_type:
+        for p_type in np.atleast_1d(profile_type).tolist():
             halo_model = HaloModel(p_type)
             free_pars = halo_model.free_par_names
             
@@ -799,7 +802,7 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
             #Initial guess for curve_fit
             initial_pars = [[np.log10(1.5*r500), np.log10(0.5*r500)], [np.log10(1.5*r500), np.log10(0.5*r500), 0.]]
 
-            for p_type, par_0, rad_bounds in zip(profile_type, initial_pars, radius_fit_bounds):
+            for p_type, par_0, rad_bounds in zip(np.atleast_1d(profile_type).tolist(), initial_pars, radius_fit_bounds):
                 #Condition on radius: select only R (in units of r500) inside the fit_bounds, and not corresponding to an empty bin
                 R_cond = (radius >= rad_bounds[0]) & (radius <= rad_bounds[1]) & (num != 0)
 
@@ -848,7 +851,7 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
                     fit_cov[p_type][quantity][key].append(cov_result[p_i])
 
     #Convert all parameter uncertainty lists inside the dictionary in numpy arrays 
-    for quantity in profile_quantity:
+    for quantity in np.atleast_1d(profile_quantity).tolist():
         for p_type in profile_type:
             for key in list(fit_pars[p_type][quantity].keys()):
                 fit_pars[p_type][quantity][key] = np.array(fit_pars[p_type][quantity][key])
@@ -862,8 +865,8 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
 
 
 def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simulation_name=None,
-                    profile_type_3D=["NFW"], profile_type_2D=["NFW"], 
-                    fit_quantities_3D=["MASS"], fit_quantities_2D=["MASS"],
+                    profile_type_3D="NFW", profile_type_2D="NFW", 
+                    fit_quantities_3D="MASS", fit_quantities_2D="MASS",
                     radius_fit_bounds_3D=[(0., np.inf)], radius_fit_bounds_2D=[(0., np.inf)],
                     n_dim_fits=["3D", "2D"], dimensions=["x", "y", "z"],
                     save_to_file=False, load_from_file=False, save_data_path="", enable_savestates=False,
@@ -943,20 +946,20 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
             fit_cov = file_saved["fit_cov"].item()
 
     else:
-        for sim_type in simulation_type:
+        for sim_type in np.atleast_1d(simulation_type).tolist():
             dirpath = "progress/" + simulation_name + "/savestates_fits/" + sim_type
 
             print("CURRENT SIMULATION: " + sim_type)
             
             #Create directory to store savestates
-            for n_dim in n_dim_fits:
+            for n_dim in np.atleast_1d(n_dim_fits).tolist():
                 if (not os.path.exists(dirpath + "/" + n_dim)) and enable_savestates:
                     os.makedirs(dirpath + "/" + n_dim)
 
             R500 = halo_props[sim_type]["R500"]
             cosm_params = sim_props[sim_type]["COSM_PARS"]
             
-            for n_dim in n_dim_fits:
+            for n_dim in np.atleast_1d(n_dim_fits).tolist():
                 binned_profiles = halo_profiles[sim_type][n_dim]
                 
                 if n_dim == "3D":
@@ -980,7 +983,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                                                                             fit_cov=fit_cov[sim_type][n_dim])
 
                 elif n_dim == "2D":
-                    for dim in dimensions:
+                    for dim in np.atleast_1d(dimensions).tolist():
                         save_name = "save_state_2D" + dim + ".npz"
                     
                         if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
@@ -1099,7 +1102,7 @@ def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simu
                                                     enable_savestates, enable_multiprocessing) 
                                                     for sim_type in simulation_type])
                                                     
-            for sim_type, res in zip(simulation_type, results):
+            for sim_type, res in zip(np.atleast_1d(simulation_type).tolist(), results):
                 fit_pars[sim_type] = res[0][sim_type]
                 fit_cov[sim_type] = res[1][sim_type]
             

@@ -55,7 +55,7 @@ The dictionary is structured as follows:
 
 The **fit_pars** and **fit_cov** contain all halo best-fit parameters and covariances respectively, for each profile model and fit quantity supplied, and for both the 3D and 2D fits. 
 
-**The fit parameters are returned by the dictionaries in log $-$ except for chi2 and M200 $-$ and the covariances are those of the log parameters**.
+**The dictionaries contain the log10 of the fitted free parameters $-$ except for chi2 and M200 $-$ and the covariances are those of the log10 parameters**.
 
 The dictionary is structured as follows:
 
@@ -96,10 +96,10 @@ Finally, the **halo_props** and **sim_props** are dictionaries containing proper
 ## Enable savestates
 If a simulation is composed of many HDF5 files, the routine allows to select the number of files to read at a time, along with the region from which to read them, allowing to read all HDF5 files in batches.
 
-Furthermore, each batch of profiles read in this way can optionally be saved to a "progress" folder, to keep track of the files already read and to backup the current progress. The routine can create savestates for multiple individual HDF5 files at once, saving all progress into a single npz file containing all information stored in the halo_profiles, halo_props and sim_props dictionaries for that batch. Instead, the progress for the fitting is only saved on a per-dimension basis, that is, the routine can only save the current progress after completing the fitting for an individual dimension (i.e. 3D, 2Dx, 2Dy, 2Dz). 
+Furthermore, each batch of profiles read in this way can optionally be saved to a "progress" folder, to keep track of the files already read and to backup the current progress. The routine can create savestates for multiple individual HDF5 files at once, saving all current progress into a single npz file containing all information stored in the halo_profiles, halo_props and sim_props dictionaries for that batch. Instead, the progress for the fitting is only saved on a per-dimension basis, that is, the routine can only save the current progress after completing the fitting for an individual dimension (i.e. 3D, 2Dx, 2Dy, 2Dz). The names of the HDF5 files already read are stored in txt files inside the savestates/filenames_done folder. 
 
 Finally, since the routine keeps track of the progress, every time it is run it will continue reading or fitting from the last created savestate, until it will have read or fit every remaining halo.
-If savestates are allowed, the routine will automatically read any created savestates instead of reading or fitting from the beginning. Therefore, to make the code start reading or fitting the profiles from zero simply delete the "savestates" and "savestates_fits" folders from the "progress" directory.
+If savestates are allowed, the routine will automatically read any created savestates instead of reading or fitting from the beginning,. Therefore, to make the code start reading or fitting the profiles from zero simply delete the "savestates" and "savestates_fits" folders from the "progress" directory.
 
 ## Multiprocessing
 `FitAndPlot` also possesses basic multiprocessing functionality: if multiple simulation types are supplied, the reading and fitting of each one can be assigned to different Python processes to allow for parallel computation.
