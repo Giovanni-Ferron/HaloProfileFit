@@ -359,7 +359,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
         Nhalos_region = 0
         
         #HDF5 file names
-        basename = hdf5_path + "/" + sim_name + "/" + region + "/" + sim_type
+        basename = hdf5_path + sim_name + "/" + region + "/" + sim_type
         file_names = [os.path.normpath(f) for f in glob.glob(basename + "/*.hdf5")]
         
         if enable_savestates:
@@ -412,15 +412,20 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
             Nfiles_read += 1
             
             with h5py.File(h5_file_name, "r") as hdf:
-                #Get the cosmological parameters
-                h = hdf["Header"].attrs["h"]
-                Om = hdf["Header"].attrs["Om"]
-                Ol = hdf["Header"].attrs["Ol"]
-                z = hdf["Header"].attrs["z"]
-                cosm_pars = np.array([h, Om, Ol, z])
-
-                #Only print the cosmological parameters the first time
+                #Only print and save the cosmological parameters the first time
                 if h5_file_name == file_names[0]:
+                    #Get the cosmological parameters
+                    h = hdf["Header"].attrs["h"]
+                    Om = hdf["Header"].attrs["Om"]
+                    Ol = hdf["Header"].attrs["Ol"]
+                    z = hdf["Header"].attrs["z"]
+                    cosm_pars = np.array([h, Om, Ol, z])
+                    
+                    Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
+                    
+                    sim_props["COSM_PARS"] = cosm_pars
+                    sim_props["MPART"] = Mpart
+                
                     if region == sim_regions[0]:
                         if enable_multiprocessing:
                             print("Cosmology:\n h = {0:3.4f}, Om = {1:3.4f}, Ol = {2:3.4f}, z = {3:3.4f}".format(h, Om , Ol, z))
@@ -436,14 +441,8 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
 
                 #Halo properties
                 ids = hdf["Header/Group_IDs"][:].astype(int)    #Group IDs
-                Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
                 Nhalos_region += len(ids)
                 Nhalos_tot += len(ids)    #Add the number of halos in the file to the total number of halos the region
-
-                #Only save the simulation parameters the first time
-                if h5_file_name == file_names[0]:
-                    sim_props["COSM_PARS"] = cosm_pars
-                    sim_props["MPART"] = Mpart
 
                 #Read the halo profiles
                 data = hdf["RadialProfiles"]   #Halo profiles group
