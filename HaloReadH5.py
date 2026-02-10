@@ -412,17 +412,17 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
             Nfiles_read += 1
             
             with h5py.File(h5_file_name, "r") as hdf:
+                #Get the cosmological parameters
+                h = hdf["Header"].attrs["h"]
+                Om = hdf["Header"].attrs["Om"]
+                Ol = hdf["Header"].attrs["Ol"]
+                z = hdf["Header"].attrs["z"]
+                cosm_pars = np.array([h, Om, Ol, z])
+                
+                Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
+            
                 #Only print and save the cosmological parameters the first time
                 if h5_file_name == file_names[0]:
-                    #Get the cosmological parameters
-                    h = hdf["Header"].attrs["h"]
-                    Om = hdf["Header"].attrs["Om"]
-                    Ol = hdf["Header"].attrs["Ol"]
-                    z = hdf["Header"].attrs["z"]
-                    cosm_pars = np.array([h, Om, Ol, z])
-                    
-                    Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
-                    
                     sim_props["COSM_PARS"] = cosm_pars
                     sim_props["MPART"] = Mpart
                 
@@ -581,7 +581,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
 
 
 def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regions="", dimensions=[],
-                    save_to_file=False, load_from_file=False, save_data_path="",
+                    save_to_file=False, load_from_file=False, save_data_path=None,
                     enable_savestates=False, Ntoread=None, enable_multiprocessing=False):
     """
     This function reads the HDF5 files of all supplied simulations and returns the corresponding profiles and simulation properties
@@ -631,7 +631,7 @@ def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regi
     halo_props = {sim_type: dict() for sim_type in simulation_type}
     sim_props = {sim_type: dict() for sim_type in simulation_type}
     
-    if save_data_path == "":
+    if save_data_path == None:
         save_data_path = "progress/" + sim_name
     
     if load_from_file and os.path.isfile(save_data_path + "/halo_profiles.npz"):
@@ -868,7 +868,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                     fit_quantities_3D="MASS", fit_quantities_2D="MASS",
                     radius_fit_bounds_3D=[(0., np.inf)], radius_fit_bounds_2D=[(0., np.inf)],
                     n_dim_fits=["3D", "2D"], dimensions=["x", "y", "z"],
-                    save_to_file=False, load_from_file=False, save_data_path="", enable_savestates=False,
+                    save_to_file=False, load_from_file=False, save_data_path=None, enable_savestates=False,
                     enable_multiprocessing=False):
     """
     This function performs 3D and 2D fits of halo profiles from a supplied simulation type.
@@ -936,7 +936,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
     fit_pars = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}} for sim_type in simulation_type}
     fit_cov = {sim_type: {"3D": dict(), "2D": {dim: dict() for dim in dimensions}} for sim_type in simulation_type}
     
-    if save_data_path == "":
+    if save_data_path is None:
         save_data_path = "progress/" + simulation_name
 
     if load_from_file and os.path.isfile(save_data_path + "/halo_fits.npz"):
@@ -1019,7 +1019,7 @@ def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simu
                     fit_quantities_3D=["MASS"], fit_quantities_2D=["MASS"],
                     radius_fit_bounds_3D=[(0., np.inf)], radius_fit_bounds_2D=[(0., np.inf)],
                     n_dim_fits=["3D", "2D"], dimensions=["x", "y", "z"],
-                    save_to_file=False, load_from_file=False, save_data_path="", enable_savestates=False, 
+                    save_to_file=False, load_from_file=False, save_data_path=None, enable_savestates=False, 
                     enable_multiprocessing=False):
     """
     This function performs 3D and 2D fits of halo profiles from a supplied simulation type.
@@ -1082,40 +1082,41 @@ def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simu
                     
     fit_pars = dict()
     fit_cov = dict()
-                    
-    if enable_multiprocessing:
-        if save_data_path == "":
-            save_data_path = "progress/" + simulation_name
-
-        if load_from_file and os.path.isfile(save_data_path + "/halo_fits.npz"):
-            with np.load(save_data_path + "/halo_fits.npz", allow_pickle=True) as file_saved:
-                fit_pars = file_saved["fit_pars"].item()
-                fit_cov = file_saved["fit_cov"].item()
-            
-        with mp.Pool(len(simulation_type)) as pool:
-            results = pool.starmap(FitSimProfiles, [(halo_profiles, halo_props, sim_props, [sim_type], simulation_name,
-                                                    profile_type_3D, profile_type_2D, fit_quantities_3D, fit_quantities_2D,
-                                                    radius_fit_bounds_3D, radius_fit_bounds_2D,
-                                                    n_dim_fits, dimensions,
-                                                    False, False, "",
-                                                    enable_savestates, enable_multiprocessing) 
-                                                    for sim_type in simulation_type])
-                                                    
-            for sim_type, res in zip(np.atleast_1d(simulation_type).tolist(), results):
-                fit_pars[sim_type] = res[0][sim_type]
-                fit_cov[sim_type] = res[1][sim_type]
-            
-        if save_to_file and ( (not load_from_file) or (not os.path.isfile(save_data_path + "/halo_fits.npz")) ):
-            np.savez(save_data_path + "/halo_fits.npz", fit_pars=fit_pars, fit_cov=fit_cov)
-            
+    
+    if save_data_path == None:
+        save_data_path = "progress/" + simulation_name
+    
+    if load_from_file and os.path.isfile(save_data_path + "/halo_fits.npz"):
+        with np.load(save_data_path + "/halo_fits.npz", allow_pickle=True) as file_saved:
+            fit_pars = file_saved["fit_pars"].item()
+            fit_cov = file_saved["fit_cov"].item()
+    
     else:
-        fit_pars, fit_cov = FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simulation_name,
-                                          profile_type_3D, profile_type_2D, fit_quantities_3D, fit_quantities_2D,
-                                          radius_fit_bounds_3D, radius_fit_bounds_2D,
-                                          n_dim_fits, dimensions,
-                                          save_to_file, load_from_file, save_data_path, 
-                                          enable_savestates, enable_multiprocessing)
-                                                      
+        if enable_multiprocessing:
+            with mp.Pool(len(simulation_type)) as pool:
+                results = pool.starmap(FitSimProfiles, [(halo_profiles, halo_props, sim_props, [sim_type], simulation_name,
+                                                        profile_type_3D, profile_type_2D, fit_quantities_3D, fit_quantities_2D,
+                                                        radius_fit_bounds_3D, radius_fit_bounds_2D,
+                                                        n_dim_fits, dimensions,
+                                                        False, False, "",
+                                                        enable_savestates, enable_multiprocessing) 
+                                                        for sim_type in simulation_type])
+                                                        
+                for sim_type, res in zip(np.atleast_1d(simulation_type).tolist(), results):
+                    fit_pars[sim_type] = res[0][sim_type]
+                    fit_cov[sim_type] = res[1][sim_type]
+                
+        else:
+            fit_pars, fit_cov = FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simulation_name,
+                                              profile_type_3D, profile_type_2D, fit_quantities_3D, fit_quantities_2D,
+                                              radius_fit_bounds_3D, radius_fit_bounds_2D,
+                                              n_dim_fits, dimensions,
+                                              save_to_file, load_from_file, save_data_path, 
+                                              enable_savestates, enable_multiprocessing)
+                                              
+    if save_to_file and ( (not load_from_file) or (not os.path.isfile(save_data_path + "/halo_fits.npz")) ):
+        np.savez(save_data_path + "/halo_fits.npz", fit_pars=fit_pars, fit_cov=fit_cov)
+
     return fit_pars, fit_cov
 
 
