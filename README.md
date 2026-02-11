@@ -87,7 +87,7 @@ The dictionary is structured as follows:
 
 Finally, the **halo_props** and **sim_props** are dictionaries containing properties for each halo and global simulation properties, respectively:
 
-    - halo_props[sim_type].keys() = {"ID", "REGION", "R500", "R200"}
+    - halo_props[sim_type].keys() = {"ID", "REGION", "R500", "R200", "MASS_TOT"}
 
     - sim_props[sim_type].keys() = {"HALO_NUM_TOT", "HALO_NUM_REGION", "MPART", "COSM_PARS"}
 
