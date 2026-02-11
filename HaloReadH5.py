@@ -337,7 +337,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                      "SIGMAr": [], "SIGMAt": [], "SIGMAp": [], "ERR_MASS": [], "ERR_DENSITY": [], "ERR_VCIRC": [], "R": []}
     halo_profiles_2D = {dim: {"MASS": [], "DENSITY": [], "DEN_CUM": [], "DELTA_SIGMA": [], "NUM": [], "CUM_NUM": [], "ERR_MASS": [], 
                                    "ERR_DENSITY": [], "ERR_DEN_CUM": [], "ERR_DSIGMA": [], "R": []} for dim in dimensions}
-    halo_props = {"ID": [], "REGION": [], "R500": [], "R200": [], "MASS_TOT": []}
+    halo_props = {"ID": [], "REGION": [], "R500": [], "R200": [], "M500": [], "M200": [], "MASS_TOT": []}
     sim_props = {"HALO_NUM_TOT": None, "HALO_NUM_REGION": {reg: None for reg in sim_regions}, 
                 "MPART": None, "COSM_PARS": None}
 
@@ -420,7 +420,6 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                 z = hdf["Header"].attrs["z"]
                 cosm_pars = np.array([h, Om, Ol, z])
                 
-                #--------------------TOFIX--------------------------
                 # Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
                 Mpart = hdf["RadialProfiles"]["Group_%i_MassCum"%0][:][-1] / hdf["RadialProfiles"]["Group_%i_NpartCum"%0][:][-1]
             
@@ -452,6 +451,11 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         #Halo r500c and r200c
                         r500c = data["Group_%i_R500"%ii][:][0]
                         r200c = data["Group_%i_R200"%ii][:][0]
+                        
+                        #Halo M500c and M200c from the simulation
+                        H2z = (100 * h)**2 * (Om * (1 + z)**3 + Ol)
+                        M500c = r500c**3 * 100 * H2z / G_mpc
+                        M200c = r200c**3 * 100 * H2z / G_mpc
 
         #####################################################################################################################
 
@@ -531,7 +535,9 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         halo_props["REGION"].append(region)
                         halo_props["R500"].append(r500c)    #In Mpc
                         halo_props["R200"].append(r200c)    #In Mpc
-                        halo_props["MASS_TOT"].append(MassCum[-1])    #In Msun
+                        halo_props["M500"].append(M500c)    #In Msun
+                        halo_props["M200"].append(M200c)    #In Msun
+                        halo_props["MASS_TOT"].append(MassCum[-1])    #Total halo mass, in Msun
                         
                         Nhalos_region += 1
                         Nhalos_tot += 1    #Add the number of halos in the file to the total number of halos the region
