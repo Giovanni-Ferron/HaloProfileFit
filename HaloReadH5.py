@@ -337,8 +337,9 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                      "SIGMAr": [], "SIGMAt": [], "SIGMAp": [], "ERR_MASS": [], "ERR_DENSITY": [], "ERR_VCIRC": [], "R": []}
     halo_profiles_2D = {dim: {"MASS": [], "DENSITY": [], "DEN_CUM": [], "DELTA_SIGMA": [], "NUM": [], "CUM_NUM": [], "ERR_MASS": [], 
                                    "ERR_DENSITY": [], "ERR_DEN_CUM": [], "ERR_DSIGMA": [], "R": []} for dim in dimensions}
-    halo_props = {"ID": [], "REGION": [], "R500": [], "R200": []}
-    sim_props = {"HALO_NUM_TOT": None, "HALO_NUM_REGION": {reg: None for reg in sim_regions}, "MPART": None, "COSM_PARS": None}
+    halo_props = {"ID": [], "REGION": [], "R500": [], "R200": [], "MASS_TOT": []}
+    sim_props = {"HALO_NUM_TOT": None, "HALO_NUM_REGION": {reg: None for reg in sim_regions}, 
+                "MPART": None, "COSM_PARS": None}
 
     #Define simulation properties
     Nhalos_tot = 0
@@ -419,7 +420,9 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                 z = hdf["Header"].attrs["z"]
                 cosm_pars = np.array([h, Om, Ol, z])
                 
-                Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
+                #--------------------TOFIX--------------------------
+                # Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
+                Mpart = hdf["RadialProfiles"]["Group_%i_MassCum"%0][:][-1] / hdf["RadialProfiles"]["Group_%i_NpartCum"%0][:][-1]
             
                 #Only print and save the cosmological parameters the first time
                 if h5_file_name == file_names[0]:
@@ -440,96 +443,102 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                     print("\t" + h5_file_name)
 
                 #Halo properties
-                ids = hdf["Header/Group_IDs"][:].astype(int)    #Group IDs
-                Nhalos_region += len(ids)
-                Nhalos_tot += len(ids)    #Add the number of halos in the file to the total number of halos the region
-
+                ids = hdf["Header"]["Group_IDs"][:].astype(int)    #Group IDs
                 #Read the halo profiles
                 data = hdf["RadialProfiles"]   #Halo profiles group
 
                 for ii in ids:
-                    #Halo r500c and r200c
-                    r500c = data["Group_%i_R500"%ii][:][0]
-                    r200c = data["Group_%i_R200"%ii][:][0]
+                    try:
+                        #Halo r500c and r200c
+                        r500c = data["Group_%i_R500"%ii][:][0]
+                        r200c = data["Group_%i_R200"%ii][:][0]
 
-    #####################################################################################################################
+        #####################################################################################################################
 
-                    #3D halo profiles and corresponding uncertainties
-                    bin_centers = data["Group_%i_Radius"%ii][:]
-                    MassCum = data["Group_%i_MassCum"%ii][:]    #Cumulative mass in M_sun
-                    Den = data["Group_%i_Density"%ii][:] / r500c**3    #Density inside a bin in M_sun/Mpc^3
-                    Vel_circ = np.sqrt(G_mpc * MassCum / bin_centers * r500c)    #Circular velocity in km/s
-                    Npart = data["Group_%i_Npart"%ii][:]    #Number of particles inside a bin
-                    NpartCum = data["Group_%i_NpartCum"%ii][:]    #Cumulative number of particles
-                    sr2, st2, sp2 = data["Group_%i_VelocityDispersion"%ii][3:6]    #Velocity dispersions along r, theta, phi in km^2/s^2
-                    
-                    with np.errstate(invalid="ignore"):
-                        beta_r = 1 - (st2 + sp2) / (2 * sr2)
-                        beta_r = np.nan_to_num(beta_r, 0.)
+                        #3D halo profiles and corresponding uncertainties
+                        bin_centers = data["Group_%i_Radius"%ii][:]
+                        MassCum = data["Group_%i_MassCum"%ii][:]    #Cumulative mass in M_sun
+                        Den = data["Group_%i_Density"%ii][:] / r500c**3    #Density inside a bin in M_sun/Mpc^3
+                        Vel_circ = np.sqrt(G_mpc * MassCum / bin_centers * r500c)    #Circular velocity in km/s
+                        Npart = data["Group_%i_Npart"%ii][:]    #Number of particles inside a bin
+                        NpartCum = data["Group_%i_NpartCum"%ii][:]    #Cumulative number of particles
+                        sr2, st2, sp2 = data["Group_%i_VelocityDispersion"%ii][3:6]    #Velocity dispersions along r, theta, phi in km^2/s^2
+                        
+                        with np.errstate(invalid="ignore"):
+                            beta_r = 1 - (st2 + sp2) / (2 * sr2)
+                            beta_r = np.nan_to_num(beta_r, 0.)
 
-                    #Compute mass Poisson errors
-                    err_mass = Mpart * np.sqrt(NpartCum)
-            
-                    #Compute density Poisson errors
-                    #Since the bin edges are equally spaced in log space, to compute the volume shells add half of the difference between log bin centers to 
-                    #the log bin center to obtain all the bin edges except the first, which is added manually
-                    bin_edges = 10**np.append(np.log10(bin_centers[0]) - 0.5 * np.diff(np.log10(bin_centers))[0], 
-                                               np.log10(bin_centers) + 0.5 * np.diff(np.log10(bin_centers))[0])
-                    volume_bins = 4/3 * np.pi * (bin_edges[1:]**3 - bin_edges[:-1]**3)
-                    err_den = Mpart * np.sqrt(Npart) / (volume_bins * r500c**3)
-        
-                    #Compute circular velocity Poisson errors
-                    with np.errstate(divide="ignore", invalid="ignore"):
-                        err_vel = 0.5 * np.sqrt(G_mpc / (bin_centers * r500c)) * MassCum**(-1/2) * err_mass
-
-                    #Save all data in dictionaries
-                    saved_quantities = [MassCum, Den, Vel_circ, beta_r, Npart, NpartCum, sr2, st2, sp2, err_mass, err_den, err_vel, bin_centers]
-                    
-                    for key, quantity in zip(list(halo_profiles_3D.keys()), saved_quantities):
-                        halo_profiles_3D[key].append(quantity)
-
-    #####################################################################################################################
-        
-                    #2D halo profiles and corresponding uncertainties
-                    for dim in np.atleast_1d(dimensions).tolist():
-                        bin_centers_2D = data["Group_%i_Radius2D"%ii + dim][:]  #In units of r500
-                        MassCum_2D = data["Group_%i_MassCum2D"%ii + dim][:]    #2D cumulative mass in M_sun
-                        Den_2D = data["Group_%i_Density2D"%ii + dim][:] / r500c**2    #2D density inside a bin in M_sun/Mpc^2
-                        Ncum_2D = data["Group_%i_NpartCum2D"%ii + dim][:]    #2D number of particles inside a bin
-                        Nbin_2D = data["Group_%i_Npart2D"%ii + dim][:]    #2D cumulative number of particles
-    
                         #Compute mass Poisson errors
-                        err_mass_2D = Mpart * np.sqrt(Ncum_2D)
+                        err_mass = Mpart * np.sqrt(NpartCum)
                 
-                        #Compute density Poisson errors, if enabled
+                        #Compute density Poisson errors
                         #Since the bin edges are equally spaced in log space, to compute the volume shells add half of the difference between log bin centers to 
                         #the log bin center to obtain all the bin edges except the first, which is added manually
-                        bin_edges_2D = 10**np.append(np.log10(bin_centers_2D[0]) - 0.5 * np.diff(np.log10(bin_centers_2D))[0], 
-                                                   np.log10(bin_centers_2D) + 0.5 * np.diff(np.log10(bin_centers_2D))[0])
-                        area_bins = np.pi * (bin_edges[1:]**2 - bin_edges[:-1]**2)
-                        err_den_2D = Mpart * np.sqrt(Nbin_2D) / (area_bins * r500c**2)
-    
-                        #Cumulative surface density, in M_sun/Mpc^2
-                        DenCum_2D = MassCum_2D / (np.pi * bin_edges_2D[1:]**2 * r500c**2)
-                        err_den_cum_2D = Mpart * np.sqrt(Ncum_2D) / (np.pi * bin_edges_2D[1:]**2 * r500c**2)
-
-                        #Delta Sigma profile, in Msun/Mpc^2
-                        Dsigma = DenCum_2D - Den_2D
-                        err_dsigma = np.sqrt(err_den_cum_2D**2 + err_den_2D**2)
+                        bin_edges = 10**np.append(np.log10(bin_centers[0]) - 0.5 * np.diff(np.log10(bin_centers))[0], 
+                                                   np.log10(bin_centers) + 0.5 * np.diff(np.log10(bin_centers))[0])
+                        volume_bins = 4/3 * np.pi * (bin_edges[1:]**3 - bin_edges[:-1]**3)
+                        err_den = Mpart * np.sqrt(Npart) / (volume_bins * r500c**3)
+            
+                        #Compute circular velocity Poisson errors
+                        with np.errstate(divide="ignore", invalid="ignore"):
+                            err_vel = 0.5 * np.sqrt(G_mpc / (bin_centers * r500c)) * MassCum**(-1/2) * err_mass
 
                         #Save all data in dictionaries
-                        saved_quantities_2D = [MassCum_2D, Den_2D, DenCum_2D, Dsigma, Nbin_2D, Ncum_2D, 
-                                               err_mass_2D, err_den_2D, err_den_cum_2D, err_dsigma, bin_centers_2D]
+                        saved_quantities = [MassCum, Den, Vel_circ, beta_r, Npart, NpartCum, sr2, st2, sp2, 
+                                            err_mass, err_den, err_vel, bin_centers]
                         
-                        for key, quantity in zip(list(halo_profiles_2D[dim].keys()), saved_quantities_2D):
-                            halo_profiles_2D[dim][key].append(quantity)
+                        for key, quantity in zip(list(halo_profiles_3D.keys()), saved_quantities):
+                            halo_profiles_3D[key].append(quantity)
 
-                    #Save the halo properties
-                    halo_props["ID"].append(ii)
-                    halo_props["REGION"].append(region)
-                    halo_props["R500"].append(r500c)
-                    halo_props["R200"].append(r200c)
+        #####################################################################################################################
+            
+                        #2D halo profiles and corresponding uncertainties
+                        for dim in np.atleast_1d(dimensions).tolist():
+                            bin_centers_2D = data["Group_%i_Radius2D"%ii + dim][:]  #In units of r500
+                            MassCum_2D = data["Group_%i_MassCum2D"%ii + dim][:]    #2D cumulative mass in M_sun
+                            Den_2D = data["Group_%i_Density2D"%ii + dim][:] / r500c**2    #2D density inside a bin in M_sun/Mpc^2
+                            Ncum_2D = data["Group_%i_NpartCum2D"%ii + dim][:]    #2D number of particles inside a bin
+                            Nbin_2D = data["Group_%i_Npart2D"%ii + dim][:]    #2D cumulative number of particles
+        
+                            #Compute mass Poisson errors
+                            err_mass_2D = Mpart * np.sqrt(Ncum_2D)
+                    
+                            #Compute density Poisson errors, if enabled
+                            #Since the bin edges are equally spaced in log space, to compute the volume shells add half of the difference between log bin centers to 
+                            #the log bin center to obtain all the bin edges except the first, which is added manually
+                            bin_edges_2D = 10**np.append(np.log10(bin_centers_2D[0]) - 0.5 * np.diff(np.log10(bin_centers_2D))[0], 
+                                                       np.log10(bin_centers_2D) + 0.5 * np.diff(np.log10(bin_centers_2D))[0])
+                            area_bins = np.pi * (bin_edges[1:]**2 - bin_edges[:-1]**2)
+                            err_den_2D = Mpart * np.sqrt(Nbin_2D) / (area_bins * r500c**2)
+        
+                            #Cumulative surface density, in M_sun/Mpc^2
+                            DenCum_2D = MassCum_2D / (np.pi * bin_edges_2D[1:]**2 * r500c**2)
+                            err_den_cum_2D = Mpart * np.sqrt(Ncum_2D) / (np.pi * bin_edges_2D[1:]**2 * r500c**2)
 
+                            #Delta Sigma profile, in Msun/Mpc^2
+                            Dsigma = DenCum_2D - Den_2D
+                            err_dsigma = np.sqrt(err_den_cum_2D**2 + err_den_2D**2)
+
+                            #Save all data in dictionaries
+                            saved_quantities_2D = [MassCum_2D, Den_2D, DenCum_2D, Dsigma, Nbin_2D, Ncum_2D, 
+                                                   err_mass_2D, err_den_2D, err_den_cum_2D, err_dsigma, bin_centers_2D]
+                            
+                            for key, quantity in zip(list(halo_profiles_2D[dim].keys()), saved_quantities_2D):
+                                halo_profiles_2D[dim][key].append(quantity)
+
+                        #Save the halo properties
+                        halo_props["ID"].append(ii)
+                        halo_props["REGION"].append(region)
+                        halo_props["R500"].append(r500c)    #In Mpc
+                        halo_props["R200"].append(r200c)    #In Mpc
+                        halo_props["MASS_TOT"].append(MassCum[-1])    #In Msun
+                        
+                        Nhalos_region += 1
+                        Nhalos_tot += 1    #Add the number of halos in the file to the total number of halos the region
+                    
+                    except:
+                       pass
+                
     #####################################################################################################################
 
             if enable_savestates:
