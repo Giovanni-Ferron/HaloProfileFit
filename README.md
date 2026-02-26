@@ -103,3 +103,6 @@ If savestates are allowed, the routine will automatically read any created saves
 
 ## Multiprocessing
 `FitAndPlot` also possesses basic multiprocessing functionality: if multiple simulation types are supplied, the reading and fitting of each one can be assigned to different Python processes to allow for parallel computation.
+
+## Modifying the code
+The code can be freely and easily modified as needed, for example in order to include more halo fit models or change the HDF5 group names. To add a custom fit model it is most convenient to modify the HaloModel class, adding the required parameters of the custom model as done for the default NFW and gNFW cases. Instead, for modifications to the HDF5 reading or profile fitting it is best to see the GetProfiles and FitProfiles functions.   
