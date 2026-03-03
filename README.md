@@ -2,7 +2,7 @@
 `FitAndPlot` is a Python3 routine for fitting and plotting dark matter halo profiles stored in HDF5 files, obtained from processing of ROCKSTAR halo finder output. 
 The code can fit binned halo profiles with a 3D and 2D NFW model and a 3D gNFW model and computes the following:
 
-- Distributions of the fit parameters NFW and gNFW $r_{200}$, $r_s$, $\gamma$.
+- Distributions of the fit parameters NFW and gNFW $r_{200c}$, $r_s$, $\gamma$.
 - 3D stacked profiles of mass, density, circular velocity, velocity dispersion components and velocity anisotropy.
 - 2D stacked profiles of mass, density and surface density excess.
 
@@ -36,7 +36,7 @@ For example, to consider three models LCDM, Model_1 and Model_2 (these names wou
 
 Once the HDF5 file reading and fitting is completed, all results are stored in nested dictionaries.
 
-**In `FitAndPlot` all quantites stored in the HDF5 files are assumed to be in physical units, except for the radial bins and densities which are assumed to be in units of the halo $r_{500}$ (change this using the scale_lengths argument in GetSimProfiles).**
+**In `FitAndPlot` all quantites stored in the HDF5 files are assumed to be in physical units, except for the radial bins and densities which are assumed to be in units of the halo $r_{500c}$ (change this using the scale_lengths argument in GetSimProfiles).**
 
 The **halo_profiles** dictionary contains all halo binned profiles, including their Poissonian uncertainties and the radial bin centers, for both the 3D case and all supplied 2D projections. 
 The dictionary is structured as follows:
@@ -93,7 +93,7 @@ Finally, the **halo_props** and **sim_props** are dictionaries containing proper
 
     - sim_props[sim_type].keys() = {"HALO_NUM_TOT", "HALO_NUM_REGION", "MPART", "COSM_PARS"}
 
-**All halo profiles and fit parameters are saved in physical units, except the 3D and 2D radial bins which are in units of $r_{500}$. All lengths and masses are in Mpc and $\text{M}_\odot$ respectively, except for the velocity dispersions and circular velocities, which are measured in km/s.**
+**All halo profiles and fit parameters are saved in physical units, except the 3D and 2D radial bins which are in units of $r_{500c}$. All overdensity radii and masses are computed with respect to the critical density of the Universe, rather than the background value. All lengths and masses are in Mpc and $\text{M}_\odot$ respectively, except for the velocity dispersions and circular velocities, which are measured in km/s.**
 
 ## Enable savestates
 If a simulation is composed of many HDF5 files, the routine allows to select the number of files to read at a time, along with the region from which to read them, allowing to read all HDF5 files in batches.
