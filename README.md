@@ -35,7 +35,7 @@ For example, to consider three models LCDM, Model_1 and Model_2 (these names wou
             └───M2_file_R2.hdf5
 
 Once the HDF5 file reading and fitting is completed, all results are stored in nested dictionaries.
-**All quantites stored in the HDF5 files are assumed to be in physical units, except for the radial bins and densities which are assumed to be in units of the halo $r_{500}$.**
+**In `FitAndPlot` all quantites stored in the HDF5 files are assumed to be in physical units, except for the radial bins and densities which are assumed to be in units of the halo $r_{500}$ (change this using the scale_lengths argument in GetSimProfiles).**
 
 The **halo_profiles** dictionary contains all halo binned profiles, including their Poissonian uncertainties and the radial bin centers, for both the 3D case and all supplied 2D projections. 
 The dictionary is structured as follows:
