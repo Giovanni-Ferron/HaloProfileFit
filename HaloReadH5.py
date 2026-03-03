@@ -290,7 +290,7 @@ def RestoreSavestates(sim_name, sim_type):
 
 
 def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", dimensions=[], 
-                enable_savestates=False, Ntoread=None, enable_multiprocessing=False):
+                enable_savestates=False, Ntoread=None, enable_multiprocessing=False, scale_lengths=None):
     """
     This function reads the HDF5 files of a given simulation and returns the corresponding profiles and simulation properties
     in nested dictionaries.
@@ -314,7 +314,10 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                                 to all regions
     enable_multiprocessing      [bool]
                                 True to enable multiprocessing (see README), used in this function only for printing purposes
-                                
+    scale_lengths               [string]
+                                Assume a scaling for the radius bins stored in the HDF5 files: None to assume physical radii, 
+                                "r500" to assume radii in units of r500, "r200" to assume radii in units of r200
+
     Returns:
     --------
     profiles:         [dict]
@@ -452,6 +455,16 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         r500c = data["Group_%i_R500"%ii][:][0]
                         r200c = data["Group_%i_R200"%ii][:][0]
                         
+                        #Set the units for all lengths in the profiles
+                        if scale_lengths == "r500":
+                            scale_r = r500c
+                           
+                        elif scale_lengths == "r200":
+                            scale_r = r200c
+                            
+                        else:
+                            scale_r = 1.
+                        
                         #Halo M500c and M200c from the simulation
                         H2z = (100 * h)**2 * (Om * (1 + z)**3 + Ol)
                         M500c = r500c**3 * 100 * H2z / G_mpc
@@ -460,10 +473,10 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
         #####################################################################################################################
 
                         #3D halo profiles and corresponding uncertainties
-                        bin_centers = data["Group_%i_Radius"%ii][:]
+                        bin_centers = data["Group_%i_Radius"%ii][:]    #In units set by scale_lengths
                         MassCum = data["Group_%i_MassCum"%ii][:]    #Cumulative mass in M_sun
-                        Den = data["Group_%i_Density"%ii][:] / r500c**3    #Density inside a bin in M_sun/Mpc^3
-                        Vel_circ = np.sqrt(G_mpc * MassCum / bin_centers * r500c)    #Circular velocity in km/s
+                        Den = data["Group_%i_Density"%ii][:] / scale_r**3    #Density inside a bin in M_sun/Mpc^3
+                        Vel_circ = np.sqrt(G_mpc * MassCum / bin_centers * scale_r)    #Circular velocity in km/s
                         Npart = data["Group_%i_Npart"%ii][:]    #Number of particles inside a bin
                         NpartCum = data["Group_%i_NpartCum"%ii][:]    #Cumulative number of particles
                         sr2, st2, sp2 = data["Group_%i_VelocityDispersion"%ii][3:6]    #Velocity dispersions along r, theta, phi in km^2/s^2
@@ -481,11 +494,11 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         bin_edges = 10**np.append(np.log10(bin_centers[0]) - 0.5 * np.diff(np.log10(bin_centers))[0], 
                                                    np.log10(bin_centers) + 0.5 * np.diff(np.log10(bin_centers))[0])
                         volume_bins = 4/3 * np.pi * (bin_edges[1:]**3 - bin_edges[:-1]**3)
-                        err_den = Mpart * np.sqrt(Npart) / (volume_bins * r500c**3)
+                        err_den = Mpart * np.sqrt(Npart) / (volume_bins * scale_r**3)
             
                         #Compute circular velocity Poisson errors
                         with np.errstate(divide="ignore", invalid="ignore"):
-                            err_vel = 0.5 * np.sqrt(G_mpc / (bin_centers * r500c)) * MassCum**(-1/2) * err_mass
+                            err_vel = 0.5 * np.sqrt(G_mpc / (bin_centers * scale_r)) * MassCum**(-1/2) * err_mass
 
                         #Save all data in dictionaries
                         saved_quantities = [MassCum, Den, Vel_circ, beta_r, Npart, NpartCum, sr2, st2, sp2, 
@@ -500,7 +513,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         for dim in np.atleast_1d(dimensions).tolist():
                             bin_centers_2D = data["Group_%i_Radius2D"%ii + dim][:]  #In units of r500
                             MassCum_2D = data["Group_%i_MassCum2D"%ii + dim][:]    #2D cumulative mass in M_sun
-                            Den_2D = data["Group_%i_Density2D"%ii + dim][:] / r500c**2    #2D density inside a bin in M_sun/Mpc^2
+                            Den_2D = data["Group_%i_Density2D"%ii + dim][:] / scale_r**2    #2D density inside a bin in M_sun/Mpc^2
                             Ncum_2D = data["Group_%i_NpartCum2D"%ii + dim][:]    #2D number of particles inside a bin
                             Nbin_2D = data["Group_%i_Npart2D"%ii + dim][:]    #2D cumulative number of particles
         
@@ -513,11 +526,11 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                             bin_edges_2D = 10**np.append(np.log10(bin_centers_2D[0]) - 0.5 * np.diff(np.log10(bin_centers_2D))[0], 
                                                        np.log10(bin_centers_2D) + 0.5 * np.diff(np.log10(bin_centers_2D))[0])
                             area_bins = np.pi * (bin_edges[1:]**2 - bin_edges[:-1]**2)
-                            err_den_2D = Mpart * np.sqrt(Nbin_2D) / (area_bins * r500c**2)
+                            err_den_2D = Mpart * np.sqrt(Nbin_2D) / (area_bins * scale_r**2)
         
                             #Cumulative surface density, in M_sun/Mpc^2
-                            DenCum_2D = MassCum_2D / (np.pi * bin_edges_2D[1:]**2 * r500c**2)
-                            err_den_cum_2D = Mpart * np.sqrt(Ncum_2D) / (np.pi * bin_edges_2D[1:]**2 * r500c**2)
+                            DenCum_2D = MassCum_2D / (np.pi * bin_edges_2D[1:]**2 * scale_r**2)
+                            err_den_cum_2D = Mpart * np.sqrt(Ncum_2D) / (np.pi * bin_edges_2D[1:]**2 * scale_r**2)
 
                             #Delta Sigma profile, in Msun/Mpc^2
                             Dsigma = DenCum_2D - Den_2D
@@ -597,7 +610,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
 
 def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regions="", dimensions=[],
                     save_to_file=False, load_from_file=False, save_data_path=None,
-                    enable_savestates=False, Ntoread=None, enable_multiprocessing=False):
+                    enable_savestates=False, Ntoread=None, enable_multiprocessing=False, scale_lengths=None):
     """
     This function reads the HDF5 files of all supplied simulations and returns the corresponding profiles and simulation properties
     in nested dictionaries.
@@ -659,7 +672,7 @@ def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regi
         if enable_multiprocessing:
             with mp.Pool(len(np.atleast_1d(simulation_type))) as pool:
                 results = pool.starmap(GetProfiles, [(hdf5_path, sim_name, sim_type, sim_regions, dimensions, 
-                                                    enable_savestates, Ntoread, enable_multiprocessing) 
+                                                    enable_savestates, Ntoread, enable_multiprocessing, scale_lengths) 
                                                     for sim_type in simulation_type])
 
                 for sim_type, res in zip(np.atleast_1d(simulation_type).tolist(), results):
@@ -670,7 +683,7 @@ def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regi
                 halo_profiles[sim_type],\
                 halo_props[sim_type],\
                 sim_props[sim_type] = GetProfiles(hdf5_path, sim_name, sim_type, sim_regions, dimensions, 
-                                                    enable_savestates, Ntoread)
+                                                    enable_savestates, Ntoread, False, scale_lengths)
             
     #Save all profiles to file
     if save_to_file and ( (not load_from_file) or (not os.path.exists(save_data_path + "/halo_profiles.npz")) ):
@@ -749,7 +762,7 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
     cosm_params:              [list]
                               Cosmological parameters [h, Om, Ol, z] for the supplied simulation type
     radius_fit_bounds:        [array_like of tuples]
-                              Radius interval in which to fit, specified for each model to fit.
+                              Radius interval in which to fit, specified for each model to fit, in units of r500.
                               Each tuple should contain the lower and upper radial bounds over which to fit
     profile_type:             [string list]
                               List containing the types of halo models to fit, e.g. ["NFW", "gNFW"]
