@@ -1232,26 +1232,28 @@ def ApplyCondition(halo_profiles=None, fit_pars=None, fit_cov=None, halo_props=N
 
         #2D profiles
         for dim in dimensions:
-            for key in list(halo_profiles[sim_type]["2D"][dim].keys()):
-                out_profiles[sim_type]["2D"][dim][key] = halo_profiles[sim_type]["2D"][dim][key][condition]
+            if halo_profiles is not None:
+                for key in list(halo_profiles[sim_type]["2D"][dim].keys()):
+                    out_profiles[sim_type]["2D"][dim][key] = halo_profiles[sim_type]["2D"][dim][key][condition]
 
             if "2D" in n_dim_fits:
                 #2D fits
-                for p_type in list(fit_pars[sim_type]["2D"][dim].keys()):
-                    profile_quantity = list(fit_pars[sim_type]["2D"][dim][p_type].keys())
+                if fit_pars is not None:
+                    for p_type in list(fit_pars[sim_type]["2D"][dim].keys()):
+                        profile_quantity = list(fit_pars[sim_type]["2D"][dim][p_type].keys())
+                        
+                        out_pars[sim_type]["2D"][dim][p_type] = dict()
+                        out_cov[sim_type]["2D"][dim][p_type] = dict()
                     
-                    out_pars[sim_type]["2D"][dim][p_type] = dict()
-                    out_cov[sim_type]["2D"][dim][p_type] = dict()
-                
-                    for quantity in profile_quantity:
-                        out_pars[sim_type]["2D"][dim][p_type][quantity] = dict()
-                        out_cov[sim_type]["2D"][dim][p_type][quantity] = dict()
-                    
-                        for key in list(fit_pars[sim_type]["2D"][dim][p_type][quantity].keys()):
-                            out_pars[sim_type]["2D"][dim][p_type][quantity][key] = fit_pars[sim_type]["2D"][dim][p_type][quantity][key][condition]
-                    
-                        for key in list(fit_cov[sim_type]["2D"][dim][p_type][quantity].keys()):
-                            out_cov[sim_type]["2D"][dim][p_type][quantity][key] = fit_cov[sim_type]["2D"][dim][p_type][quantity][key][condition]
+                        for quantity in profile_quantity:
+                            out_pars[sim_type]["2D"][dim][p_type][quantity] = dict()
+                            out_cov[sim_type]["2D"][dim][p_type][quantity] = dict()
+                        
+                            for key in list(fit_pars[sim_type]["2D"][dim][p_type][quantity].keys()):
+                                out_pars[sim_type]["2D"][dim][p_type][quantity][key] = fit_pars[sim_type]["2D"][dim][p_type][quantity][key][condition]
+                        
+                            for key in list(fit_cov[sim_type]["2D"][dim][p_type][quantity].keys()):
+                                out_cov[sim_type]["2D"][dim][p_type][quantity][key] = fit_cov[sim_type]["2D"][dim][p_type][quantity][key][condition]
 
     if halo_props is not None:
         #Halo and simulation properties
