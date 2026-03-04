@@ -423,8 +423,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                 z = hdf["Header"].attrs["z"]
                 cosm_pars = np.array([h, Om, Ol, z])
                 
-                # Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
-                Mpart = hdf["RadialProfiles"]["Group_%i_MassCum"%0][:][-1] / hdf["RadialProfiles"]["Group_%i_NpartCum"%0][:][-1]
+                Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
             
                 #Only print and save the cosmological parameters the first time
                 if h5_file_name == file_names[0]:
@@ -451,6 +450,11 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
 
                 for ii in ids:
                     try:
+                        #Particle masses if Mpart from attributes is zero
+                        if Mpart == 0:
+                            Mpart = hdf["RadialProfiles"]["Group_%i_MassCum"%ii][:][-1] / hdf["RadialProfiles"]["Group_%i_NpartCum"%ii][:][-1]
+                            sim_props["MPART"] = Mpart
+                                        
                         #Halo r500c and r200c
                         r500c = data["Group_%i_R500"%ii][:][0]
                         r200c = data["Group_%i_R200"%ii][:][0]
@@ -1228,26 +1232,28 @@ def ApplyCondition(halo_profiles=None, fit_pars=None, fit_cov=None, halo_props=N
 
         #2D profiles
         for dim in dimensions:
-            for key in list(halo_profiles[sim_type]["2D"][dim].keys()):
-                out_profiles[sim_type]["2D"][dim][key] = halo_profiles[sim_type]["2D"][dim][key][condition]
+            if halo_profiles is not None:
+                for key in list(halo_profiles[sim_type]["2D"][dim].keys()):
+                    out_profiles[sim_type]["2D"][dim][key] = halo_profiles[sim_type]["2D"][dim][key][condition]
 
             if "2D" in n_dim_fits:
                 #2D fits
-                for p_type in list(fit_pars[sim_type]["2D"][dim].keys()):
-                    profile_quantity = list(fit_pars[sim_type]["2D"][dim][p_type].keys())
+                if fit_pars is not None:
+                    for p_type in list(fit_pars[sim_type]["2D"][dim].keys()):
+                        profile_quantity = list(fit_pars[sim_type]["2D"][dim][p_type].keys())
+                        
+                        out_pars[sim_type]["2D"][dim][p_type] = dict()
+                        out_cov[sim_type]["2D"][dim][p_type] = dict()
                     
-                    out_pars[sim_type]["2D"][dim][p_type] = dict()
-                    out_cov[sim_type]["2D"][dim][p_type] = dict()
-                
-                    for quantity in profile_quantity:
-                        out_pars[sim_type]["2D"][dim][p_type][quantity] = dict()
-                        out_cov[sim_type]["2D"][dim][p_type][quantity] = dict()
-                    
-                        for key in list(fit_pars[sim_type]["2D"][dim][p_type][quantity].keys()):
-                            out_pars[sim_type]["2D"][dim][p_type][quantity][key] = fit_pars[sim_type]["2D"][dim][p_type][quantity][key][condition]
-                    
-                        for key in list(fit_cov[sim_type]["2D"][dim][p_type][quantity].keys()):
-                            out_cov[sim_type]["2D"][dim][p_type][quantity][key] = fit_cov[sim_type]["2D"][dim][p_type][quantity][key][condition]
+                        for quantity in profile_quantity:
+                            out_pars[sim_type]["2D"][dim][p_type][quantity] = dict()
+                            out_cov[sim_type]["2D"][dim][p_type][quantity] = dict()
+                        
+                            for key in list(fit_pars[sim_type]["2D"][dim][p_type][quantity].keys()):
+                                out_pars[sim_type]["2D"][dim][p_type][quantity][key] = fit_pars[sim_type]["2D"][dim][p_type][quantity][key][condition]
+                        
+                            for key in list(fit_cov[sim_type]["2D"][dim][p_type][quantity].keys()):
+                                out_cov[sim_type]["2D"][dim][p_type][quantity][key] = fit_cov[sim_type]["2D"][dim][p_type][quantity][key][condition]
 
     if halo_props is not None:
         #Halo and simulation properties
