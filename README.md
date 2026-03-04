@@ -34,6 +34,7 @@ For example, to consider three models LCDM, Model_1 and Model_2 (these names wou
         └───Model_2
             └───M2_file_R2.hdf5
 
+Also note that the region folders do not necessarily have to correspond to actual simulation regions, but can be used for other kinds of subdivision: for example, they can represent the simulations at various redshifts, where each region folder corresponds to a certain snapshot.
 Once the HDF5 file reading and fitting is completed, all results are stored in nested dictionaries.
 
 **In `FitAndPlot` all quantites stored in the HDF5 files are assumed to be in physical units, except for the radial bins and densities which are assumed to be in units of the halo $r_{500c}$ (change this using the scale_lengths argument in GetSimProfiles).**
