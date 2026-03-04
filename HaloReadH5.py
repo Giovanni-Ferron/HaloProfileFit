@@ -423,8 +423,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                 z = hdf["Header"].attrs["z"]
                 cosm_pars = np.array([h, Om, Ol, z])
                 
-                # Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
-                Mpart = hdf["RadialProfiles"]["Group_%i_MassCum"%0][:][-1] / hdf["RadialProfiles"]["Group_%i_NpartCum"%0][:][-1]
+                Mpart = hdf["Header"].attrs["Mpart"]    #Particle masses
             
                 #Only print and save the cosmological parameters the first time
                 if h5_file_name == file_names[0]:
@@ -451,6 +450,11 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
 
                 for ii in ids:
                     try:
+                        #Particle masses if Mpart from attributes is zero
+                        if Mpart == 0:
+                            Mpart = hdf["RadialProfiles"]["Group_%i_MassCum"%ii][:][-1] / hdf["RadialProfiles"]["Group_%i_NpartCum"%ii][:][-1]
+                            sim_props["MPART"] = Mpart
+                                        
                         #Halo r500c and r200c
                         r500c = data["Group_%i_R500"%ii][:][0]
                         r200c = data["Group_%i_R200"%ii][:][0]
