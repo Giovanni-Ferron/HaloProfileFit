@@ -453,7 +453,9 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         #Particle masses if Mpart from attributes is zero
                         if Mpart == 0:
                             Mpart = hdf["RadialProfiles"]["Group_%i_MassCum"%ii][:][-1] / hdf["RadialProfiles"]["Group_%i_NpartCum"%ii][:][-1]
-                            sim_props["MPART"] = Mpart
+                            
+                            if h5_file_name == file_names[0]:
+                                sim_props["MPART"] = Mpart
                                         
                         #Halo r500c and r200c
                         r500c = data["Group_%i_R500"%ii][:][0]
@@ -665,6 +667,9 @@ def GetSimProfiles(hdf5_path=None, sim_name=None, simulation_type=None, sim_regi
     
     if save_data_path == None:
         save_data_path = "progress/" + sim_name
+        
+    if not os.path.exists(save_data_path):
+        os.makedirs(save_data_path)
     
     if load_from_file and os.path.isfile(save_data_path + "/halo_profiles.npz"):
         with np.load(save_data_path + "/halo_profiles.npz", allow_pickle=True) as file_saved:
@@ -970,6 +975,9 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
     
     if save_data_path is None:
         save_data_path = "progress/" + simulation_name
+        
+    if not os.path.exists(save_data_path):
+        os.makedirs(save_data_path)
 
     if load_from_file and os.path.isfile(save_data_path + "/halo_fits.npz"):
         with np.load(save_data_path + "/halo_fits.npz", allow_pickle=True) as file_saved:
@@ -994,7 +1002,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                 binned_profiles = halo_profiles[sim_type][n_dim]
                 
                 if n_dim == "3D":
-                    save_name = "save_state_3D.npz"
+                    save_name = "save_state_" + f"{time.time():.0f}" + "3D.npz"
 
                     if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
                         print("DIMENSION: 3D")
@@ -1015,7 +1023,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
 
                 elif n_dim == "2D":
                     for dim in np.atleast_1d(dimensions).tolist():
-                        save_name = "save_state_2D" + dim + ".npz"
+                        save_name = "save_state_" + f"{time.time():.0f}" + "2D" + dim + ".npz"
                     
                         if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
                             print("DIMENSION: 2D" + dim)
@@ -1117,6 +1125,9 @@ def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simu
     
     if save_data_path == None:
         save_data_path = "progress/" + simulation_name
+        
+    if not os.path.exists(save_data_path):
+        os.makedirs(save_data_path)
     
     if load_from_file and os.path.isfile(save_data_path + "/halo_fits.npz"):
         with np.load(save_data_path + "/halo_fits.npz", allow_pickle=True) as file_saved:
