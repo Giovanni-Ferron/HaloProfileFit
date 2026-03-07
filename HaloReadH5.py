@@ -1002,7 +1002,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
                 binned_profiles = halo_profiles[sim_type][n_dim]
                 
                 if n_dim == "3D":
-                    save_name = "save_state_" + f"{time.time():.0f}" + "3D.npz"
+                    save_name = "save_state_3D.npz"
 
                     if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
                         print("DIMENSION: 3D")
@@ -1023,7 +1023,7 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
 
                 elif n_dim == "2D":
                     for dim in np.atleast_1d(dimensions).tolist():
-                        save_name = "save_state_" + f"{time.time():.0f}" + "2D" + dim + ".npz"
+                        save_name = "save_state_2D" + dim + ".npz"
                     
                         if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
                             print("DIMENSION: 2D" + dim)
