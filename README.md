@@ -5,7 +5,7 @@ The code can fit binned halo profiles with a 3D and 2D NFW model and a 3D gNFW m
 - Distributions of the fit parameters NFW and gNFW $r_{200c}$, $r_s$, $\gamma$.
 - 3D stacked profiles of mass, density, circular velocity, velocity dispersion components and velocity anisotropy.
 - 2D stacked profiles of mass, density and surface density excess.
-- NFW and gNFW concentration-mass relation
+- NFW and gNFW concentration-mass relation.
 
 The `FitAndPlot.ipynb` notebook can be used as a starting point to analyze halo profiles from multiple cosmological simulations at a time, and it can fit 3D mass, density and circular velocity, along with projected mass and density, profiles with NFW and gNFW models. 
 
