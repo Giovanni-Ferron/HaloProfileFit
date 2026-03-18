@@ -1,13 +1,13 @@
-# FitAndPlot
-`FitAndPlot` is a Python3 routine for fitting and plotting dark matter halo profiles stored in HDF5 files, obtained from processing of ROCKSTAR halo finder output. 
-The code can fit binned halo profiles with a 3D and 2D NFW model and a 3D gNFW model and computes the following:
+# HaloProfileFit
+`HaloProfileFit` is a Python3 routine for fitting and plotting dark matter halo profiles stored in HDF5 files. 
+By default, the code fits halo mass profiles with 3D and 2D, NFW and gNFW models, and computes the following:
 
-- Distributions of the fit parameters NFW and gNFW $r_{200}$, $r_s$, $\gamma$.
+- Distributions of the fit parameters NFW and gNFW $r_{200c}$, $r_s$, $\gamma$.
 - 3D stacked profiles of mass, density, circular velocity, velocity dispersion components and velocity anisotropy.
 - 2D stacked profiles of mass, density and surface density excess.
-- NFW and gNFW concentration-mass relation.
+- Concentration-mass relation and sparsities.
 
-The `FitAndPlot.ipynb` notebook can be used as a starting point to analyze halo profiles from multiple cosmological simulations at a time, and it can fit 3D mass, density and circular velocity, along with projected mass and density, profiles with NFW and gNFW models. 
+The `FitAndPlot.ipynb` notebook can be used as a starting point to analyze halo profiles from multiple cosmological simulations at a time, and it can be used to fit 3D mass, density and circular velocity, along with projected mass and density profiles with NFW and gNFW models. 
 
 The **\"Global code parameters\"** section allows to change global settings such as the location of the hdf5 files, the number of cosmological models to consider, the type of profile models and halo profile quantities to fit, and the folder for saving all generated plots. 
 
@@ -35,7 +35,10 @@ For example, to consider three models LCDM, Model_1 and Model_2 (these names wou
         └───Model_2
             └───M2_file_R2.hdf5
 
+Also note that the region folders do not necessarily have to correspond to actual simulation regions, but can be used for other kinds of subdivision: for example, they can represent the simulations at various redshifts, where each region folder corresponds to a certain snapshot.
 Once the HDF5 file reading and fitting is completed, all results are stored in nested dictionaries.
+
+**In `FitAndPlot.ibynb` all quantites stored in the HDF5 files are assumed to be in physical units, except for the radial bins and densities which are assumed to be in units of the halo $r_{500c}$ (change this using the scale_lengths argument in GetSimProfiles).**
 
 The **halo_profiles** dictionary contains all halo binned profiles, including their Poissonian uncertainties and the radial bin centers, for both the 3D case and all supplied 2D projections. 
 The dictionary is structured as follows:
@@ -88,11 +91,11 @@ The dictionary is structured as follows:
 
 Finally, the **halo_props** and **sim_props** are dictionaries containing properties for each halo and global simulation properties, respectively:
 
-    - halo_props[sim_type].keys() = {"ID", "REGION", "R500", "R200"}
+    - halo_props[sim_type].keys() = {"ID", "REGION", "R500", "R200", "M500", "M200", "MASS_TOT"}
 
     - sim_props[sim_type].keys() = {"HALO_NUM_TOT", "HALO_NUM_REGION", "MPART", "COSM_PARS"}
 
-**All halo profiles and fit parameters are saved in physical units, except the 3D and 2D radial bins which are in units of $r_{500}$. All lengths and masses are in Mpc and $\text{M}_\odot$ respectively, except for the velocity dispersions and circular velocities, which are measured in km/s.**
+**All halo profiles and fit parameters are saved in physical units, except the 3D and 2D radial bins which are in units of $r_{500c}$. All overdensity radii and masses are computed with respect to the critical density of the Universe, rather than the background value. All lengths and masses are in Mpc and $\text{M}_\odot$ respectively, except for the velocity dispersions and circular velocities, which are measured in km/s.**
 
 ## Enable savestates
 If a simulation is composed of many HDF5 files, the routine allows to select the number of files to read at a time, along with the region from which to read them, allowing to read all HDF5 files in batches.
@@ -103,4 +106,7 @@ Finally, since the routine keeps track of the progress, every time it is run it 
 If savestates are allowed, the routine will automatically read any created savestates instead of reading or fitting from the beginning,. Therefore, to make the code start reading or fitting the profiles from zero simply delete the "savestates" and "savestates_fits" folders from the "progress" directory.
 
 ## Multiprocessing
-`FitAndPlot` also possesses basic multiprocessing functionality: if multiple simulation types are supplied, the reading and fitting of each one can be assigned to different Python processes to allow for parallel computation.
+`HaloProfileFit` also possesses basic multiprocessing functionality: if multiple simulation types are supplied, the reading and fitting of each one can be assigned to different Python processes to allow for parallel computation.
+
+## Modifying the code
+The code can be freely and easily modified as needed, for example in order to include more halo fit models or change the HDF5 group names. To add a custom fit model it is most convenient to modify the HaloModel class, adding the required parameters of the custom model as done for the default NFW and gNFW cases. Instead, for modifications to the HDF5 reading or profile fitting it is best to see the GetProfiles and FitProfiles functions.   
