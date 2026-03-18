@@ -75,7 +75,7 @@ def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_typ
     -----
     lr:                     [array-like]
                             Log of the radii at which to compute the halo profile, in Mpc
-    *free_params            []
+    *free_params            [array-like]
                             Log of the free parmeters of the profile model
     cosm_params             [array-like]
                             List containing cosmological parameters [h, Om, Ol, z] of the simulations
