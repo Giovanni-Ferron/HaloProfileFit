@@ -1,6 +1,5 @@
 # HaloProfileFit
 `HaloProfileFit` is a Python3 routine for fitting and plotting dark matter halo profiles stored in HDF5 files.
-
 By default, the code fits halo mass profiles with 3D and 2D, NFW and gNFW models, and computes the following:
 
 - Distributions of the fit parameters NFW and gNFW $r_{200c}$, $r_s$, $\gamma$.
