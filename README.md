@@ -7,7 +7,7 @@ By default, the code fits halo mass profiles with 3D and 2D, NFW and gNFW models
 - 2D stacked profiles of mass, density and surface density excess.
 - Concentration-mass relation and sparsities.
 
-The `FitAndPlot.ipynb` notebook can be used as a starting point to analyze halo profiles from multiple cosmological simulations at a time, and it can be used to fit 3D mass, density and circular velocity, along with projected mass and density profiles with NFW and gNFW models. 
+The `FitAndPlot.ipynb` notebook can be used as a cleaner starting point to analyze halo profiles from multiple cosmological simulations at a time, and it can be used to fit 3D mass, density and circular velocity, along with projected mass and density profiles with NFW and gNFW models. 
 
 The **\"Global code parameters\"** section allows to change global settings such as the location of the hdf5 files, the number of cosmological models to consider, the type of profile models and halo profile quantities to fit, and the folder for saving all generated plots. 
 
