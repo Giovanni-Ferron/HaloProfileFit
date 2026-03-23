@@ -18,19 +18,23 @@ class HaloModel:
     By default only NFW and gNFW are available, but more can be added by inserting them here and in the HaloProfile function.
     """
     
-    def __init__(self, name, custom_profile=None, free_par_names=None, fit_bounds=None):
+    def __init__(self, name, custom_profile=None, free_par_names=None, fit_bounds=None, typical_pars=None, r500c=1., r200c=1.):
         self.name = name
         self.custom_profile = custom_profile
         
         if name.upper() == "NFW":
             free_par_names = ["r200", "rs"]
-            self.fit_bounds = [(-3, -3), (2, 2)]
+            fit_bounds = [(-3, -3), (2, 2)]    #In log
+            typical_pars = [np.log10(1.5 * r500c), np.log10(0.5 * r500c)]    #In log
             
         elif name.upper() == "GNFW":
             free_par_names = ["r200", "rs", "gamma"]
-            self.fit_bounds = [(-3, -3, -15), (2, 2, np.log10(2))]
+            fit_bounds = [(-3, -3, -15), (2, 2, np.log10(2))]    #In log
+            typical_pars = [np.log10(1.5 * r500c), np.log10(0.5 * r500c), 0.]    #In log
         
         self.free_par_names = free_par_names
+        self.fit_bounds = fit_bounds
+        self.typical_pars = typical_pars
 
 
     def profile(self, lr, *params, cosm_params=None, quantity=None, projection=False):
@@ -41,7 +45,7 @@ class HaloModel:
         -----
         lr:             [array-like]
                         Log of the radii at which to compute the halo profile, in Mpc
-        *params         []
+        *params         [array-like]
                         Log of the free parmeters of the profile model
         cosm_params     [array-like]
                         List containing cosmological parameters h, Om, Ol, z of the simulations
@@ -71,7 +75,7 @@ def HaloProfile(lr, *free_params, cosm_params, profile_model="NFW", quantity_typ
     -----
     lr:                     [array-like]
                             Log of the radii at which to compute the halo profile, in Mpc
-    *free_params            []
+    *free_params            [array-like]
                             Log of the free parmeters of the profile model
     cosm_params             [array-like]
                             List containing cosmological parameters [h, Om, Ol, z] of the simulations
@@ -836,7 +840,7 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
                                    for p_type in profile_type}
 
             #Initial guess for curve_fit
-            initial_pars = [[np.log10(1.5*r500), np.log10(0.5*r500)], [np.log10(1.5*r500), np.log10(0.5*r500), 0.]]
+            initial_pars = [HaloModel(p_type, r500c=r500).typical_pars for p_type in np.atleast_1d(profile_type).tolist()]
 
             for p_type, par_0, rad_bounds in zip(np.atleast_1d(profile_type).tolist(), initial_pars, radius_fit_bounds):
                 #Condition on radius: select only R (in units of r500) inside the fit_bounds, and not corresponding to an empty bin
