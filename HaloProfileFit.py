@@ -2,7 +2,7 @@
 """
 Created on Mon Mar 23 16:28:38 2026
 
-@author: Utente
+@author: Giovanni Y. Ferron
 """
 
 import numpy as np
@@ -72,16 +72,17 @@ load_from_file = True
 #Plotting parameters
 save_plots = False
 show_plots = True
-fig_path = "figures/" + simulation_name
+fig_path = "figures"
 names_list = ["$\Lambda$CDM (DMO)", r"rSIDM (DMO)", r"fSIDM (DMO)", "$\Lambda$CDM (Mag)", r"rSIDM (Mag)", r"fSIDM (Mag)"]
 model_names = {sim_type: name for sim_type, name in zip(simulation_type, names_list)}
 
 #Define the folder where all figures are saved
+fig_dir = fig_path + "/" + simulation_name
+
 if save_plots:
     distdir = os.getcwd()
 
     for sim_type in simulation_type:
-        fig_dir = fig_path + "/" + simulation_name 
         dirtot = os.path.join(distdir, fig_dir + "/" + sim_type)
         
         #If the directory doesn't exist, create it
@@ -209,7 +210,7 @@ if len(simulation_type) > 1:
     fig_N.subplots_adjust(hspace=0.)
 
     if save_plots:
-        fig_N.savefig(fig_path + "/" + "saved_halos_num.pdf", dpi=300, bbox_inches="tight")
+        fig_N.savefig(fig_dir + "/" + "saved_halos_num.pdf", dpi=300, bbox_inches="tight")
         
 
 #%%Random profile fits
@@ -288,7 +289,7 @@ for k, sim_type in enumerate(simulation_type):
                     ax.legend(prop={"size": 18})
 
         if save_plots:
-            fig_p.savefig(fig_path + sim_type + "/" + "fit_profiles_" + sim_type + ".pdf", dpi=300, bbox_inches='tight')    
+            fig_p.savefig(fig_dir + sim_type + "/" + "fit_profiles_" + sim_type + ".pdf", dpi=300, bbox_inches='tight')    
   
 
 #%%%Show random 2D profiles
@@ -353,7 +354,7 @@ for k, sim_type in enumerate(simulation_type):
                         ax.legend(prop={"size": 18})
     
             if save_plots:
-                fig_p.savefig(fig_path + sim_type + "/" + "fit_profiles_2D" + dim + "_" + sim_type + ".pdf", dpi=300, bbox_inches='tight')      
+                fig_p.savefig(fig_dir + sim_type + "/" + "fit_profiles_2D" + dim + "_" + sim_type + ".pdf", dpi=300, bbox_inches='tight')      
                 
                 
 #%%Fit parameters
@@ -370,7 +371,7 @@ for sim_type in simulation_type:
             plt.suptitle(simulation_name + " - 3D " + model_names[sim_type] + " " + p_type + " " + quantity + " fits", size=16)
         
             if save_plots:
-                fig_corner.savefig(fig_path + sim_type + "/" + p_type + "_fit_distr.pdf", dpi=300, bbox_inches="tight")    
+                fig_corner.savefig(fig_dir + sim_type + "/" + p_type + "_fit_distr.pdf", dpi=300, bbox_inches="tight")    
                 
                 
 #%%%3D chi-square distributions
@@ -413,7 +414,7 @@ for quantity in fit_quantities_3D:
     fig.subplots_adjust(wspace=0.05, hspace=0.)
     
     if save_plots:
-        fig.savefig(fig_path + "/chi2_distr_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
+        fig.savefig(fig_dir + "/chi2_distr_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
      
         
 #%%%2D chi-square distributions
@@ -457,7 +458,7 @@ for quantity in fit_quantities_2D:
         fig.subplots_adjust(wspace=0.05, hspace=0.)
         
         if save_plots:
-            fig.savefig(fig_path + "/chi2_distr_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(fig_dir + "/chi2_distr_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
         
         
 #%%gNFW inner slope distribution
@@ -497,7 +498,7 @@ for quantity in fit_quantities_3D:
             plt.legend()
     
         if save_plots:
-            fig.savefig(fig_path + "/gNFW_disr_" + quantity + "_" + b + ".pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(fig_dir + "/gNFW_disr_" + quantity + "_" + b + ".pdf", dpi=300, bbox_inches='tight')
             
             
 #%%Stacked halo profiles
@@ -641,7 +642,7 @@ for quantity, q_label, q_label_diff in zip(plot_quantities, quantity_labels, qua
         ax[1, 0].set_ylabel(q_label_diff, size=15)
     
         if save_plots:
-            fig.savefig(fig_path + "/" + quantity + "_PROFILES_3D_" + b + ".png", dpi=300, bbox_inches='tight')
+            fig.savefig(fig_dir + "/" + quantity + "_PROFILES_3D_" + b + ".png", dpi=300, bbox_inches='tight')
             
 
 #%%%Stacked 2D profiles
@@ -745,7 +746,7 @@ for dim in projections:
             ax[1, 0].set_ylabel(q_label_diff, size=15)
         
             if save_plots:
-                fig.savefig(fig_path + "/" + quantity + "_PROFILES_2D" + dim + "_" + b + ".pdf", dpi=300, bbox_inches='tight')
+                fig.savefig(fig_dir + "/" + quantity + "_PROFILES_2D" + dim + "_" + b + ".pdf", dpi=300, bbox_inches='tight')
                 
                 
 #%%Concentration-mass relation
@@ -873,7 +874,7 @@ for b, sim_batch in zip(["DMO", "Mag"], simulation_batches):
         fig.subplots_adjust(hspace=0., wspace=0.05)
     
     if save_plots:
-        fig.savefig(fig_path + "cM_relation_diff_" + b + ".pdf", dpi=300, bbox_inches='tight')
+        fig.savefig(fig_dir + "cM_relation_diff_" + b + ".pdf", dpi=300, bbox_inches='tight')
         
 
 #Plot concentration-mass relations
@@ -959,7 +960,7 @@ cbar.set_label(label="$\log{\chi^2}$", size=16)
 cbar_ax.tick_params(labelsize=15)
 
 if save_plots:
-    fig_c.savefig(fig_path + "cM_relation_median.pdf", dpi=300, bbox_inches='tight')
+    fig_c.savefig(fig_dir + "cM_relation_median.pdf", dpi=300, bbox_inches='tight')
     
     
 #%%Halo sparsities
@@ -1018,7 +1019,7 @@ for sim_type in simulation_type:
     fig_s.subplots_adjust(wspace=0.)
 
     if save_plots:
-        fig_s.savefig(fig_path + sim_type + "/" + sim_type + "_s_relations_NFW_MASS_SIM.pdf", dpi=300, bbox_inches='tight')
+        fig_s.savefig(fig_dir + sim_type + "/" + sim_type + "_s_relations_NFW_MASS_SIM.pdf", dpi=300, bbox_inches='tight')
         
 
 #%%%Sparsities from fits
