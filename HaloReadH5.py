@@ -18,7 +18,7 @@ class HaloModel:
     By default only NFW and gNFW are available, but more can be added by inserting them here and in the HaloProfile function.
     """
     
-    def __init__(self, name, custom_profile=None, free_par_names=None, fit_bounds=None, typical_pars=None, r500c=1., r200c=1.):
+    def __init__(self, name, free_par_names=None, fit_bounds=None, typical_pars=None, r500c=1., r200c=1., custom_profile=None):
         self.name = name
         self.custom_profile = custom_profile
         
