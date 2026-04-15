@@ -812,7 +812,7 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
             free_pars = halo_model.free_par_names
             
             fit_pars[p_type][quantity] = {p_name: [] for p_name in free_pars}
-            fit_pars[p_type][quantity].update({"chi2": [], "M200": []})
+            fit_pars[p_type][quantity].update({"chi2": []})
             
             fit_cov[p_type][quantity] = {p_name: [] for p_name in free_pars}
             
@@ -868,8 +868,7 @@ def FitProfiles(binned_profiles, profile_errors, bin_centers, num_profiles, R500
 
                 #Save the fit parameters and uncertainties, the chi2 and M200
                 fit_result = [*fit_parameters_dict[p_type][quantity]["popt"], 
-                               fit_parameters_dict[p_type][quantity]["chi2"],
-                               (10**fit_parameters_dict[p_type][quantity]["popt"][0])**3 * 100 * H2z / G_mpc]
+                               fit_parameters_dict[p_type][quantity]["chi2"]]
 
                 cov_result = [*np.diag(fit_parameters_dict[p_type][quantity]["cov"])]
                            
