@@ -493,7 +493,7 @@ if show_gNFW_gamma:
     
     #Plot gNFW gamma distribution
     for quantity in fit_quantities_3D:
-        for b, sim_batch in zip(["DMO", "Mag"], simulation_batches):
+        for b, sim_batch in enumerate(simulation_batches):
             fig = plt.figure(figsize=(8, 5))
             
             for sim_type in sim_batch:
@@ -510,7 +510,7 @@ if show_gNFW_gamma:
                 plt.legend()
         
             if save_plots:
-                fig.savefig(fig_dir + "/gNFW_disr_" + quantity + "_" + b + ".pdf", dpi=300, bbox_inches='tight')
+                fig.savefig(fig_dir + "/gNFW_disr_" + quantity + "_" + str(b) + ".pdf", dpi=300, bbox_inches='tight')
             
             
 #%%Stacked halo profiles
@@ -544,7 +544,7 @@ if show_stacked:
     #Plot the mean and median mass, density and beta profiles for every model and mass interval
     for quantity, q_label, q_label_diff in zip(plot_quantities, quantity_labels, quantity_labels_diff):
         #Loop over the simulation types and assign the same color to the mean and median profiles of the same simulation
-        for b, sim_batch in zip(["DMO", "Mag"], simulation_batches):
+        for b, sim_batch in enumerate(simulation_batches):
             #Compute the stacked profiles for every mass interval and draw them on the corresponding axis
             fig, ax = plt.subplots(2, len(mass_intervals), figsize=(11, 6), sharey="row", sharex="col", gridspec_kw={"height_ratios": [2, 1]})
         
@@ -655,7 +655,7 @@ if show_stacked:
             ax[1, 0].set_ylabel(q_label_diff, size=15)
         
             if save_plots:
-                fig.savefig(fig_dir + "/" + quantity + "_PROFILES_3D_" + b + ".png", dpi=300, bbox_inches='tight')
+                fig.savefig(fig_dir + "/" + quantity + "_PROFILES_3D_" + str(b) + ".png", dpi=300, bbox_inches='tight')
                 
     
     #%%%Stacked 2D profiles
@@ -759,7 +759,7 @@ if show_stacked:
                 ax[1, 0].set_ylabel(q_label_diff, size=15)
             
                 if save_plots:
-                    fig.savefig(fig_dir + "/" + quantity + "_PROFILES_2D" + dim + "_" + b + ".pdf", dpi=300, bbox_inches='tight')
+                    fig.savefig(fig_dir + "/" + quantity + "_PROFILES_2D" + dim + "_" + str(b) + ".pdf", dpi=300, bbox_inches='tight')
                 
 
 if show_cM:
@@ -790,7 +790,7 @@ if show_cM:
     c200_up_2D = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
     c200_down_2D = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
     
-    for b, sim_batch in zip(["DMO", "Mag"], simulation_batches):
+    for b, sim_batch in enumerate(simulation_batches):
         fig, ax = plt.subplots(2, len(projections) + 1, figsize=(4 * (len(projections) + 1), 4.5), 
                            sharex="col", sharey="row", gridspec_kw={"height_ratios": [2, 1]})
     
@@ -888,7 +888,7 @@ if show_cM:
             fig.subplots_adjust(hspace=0., wspace=0.05)
         
         if save_plots:
-            fig.savefig(fig_dir + "cM_relation_diff_" + b + ".pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(fig_dir + "cM_relation_diff_" + str(b) + ".pdf", dpi=300, bbox_inches='tight')
             
     
     #Plot concentration-mass relations
