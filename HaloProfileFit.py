@@ -670,7 +670,7 @@ if show_stacked:
     for dim in projections:
         for quantity, q_label, q_label_diff in zip(plot_quantities, quantity_labels, quantity_labels_diff):        
             #Loop over the simulation types and assign the same color to the mean and median profiles of the same simulation
-            for b, sim_batch in zip(["DMO", "Mag"], simulation_batches):
+            for b, sim_batch in enumerate(simulation_batches):
                 #Compute the stacked profiles for every mass interval and draw them on the corresponding axis
                 fig, ax = plt.subplots(2, len(mass_intervals), figsize=(11, 6), sharey="row", sharex="col", gridspec_kw={"height_ratios": [2, 1]})
             
