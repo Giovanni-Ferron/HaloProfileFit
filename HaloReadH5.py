@@ -367,7 +367,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
         Nhalos_region = 0
         
         #HDF5 file names
-        basename = hdf5_path + sim_name + "/" + region + "/" + sim_type
+        basename = hdf5_path + sim_name + "/" + sim_type + "/" + region
         file_names = [os.path.normpath(f) for f in glob.glob(basename + "/*.hdf5")]
         
         if enable_savestates:
@@ -1141,7 +1141,7 @@ def FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simu
                                                         profile_type_3D, profile_type_2D, fit_quantities_3D, fit_quantities_2D,
                                                         radius_fit_bounds_3D, radius_fit_bounds_2D,
                                                         n_dim_fits, dimensions,
-                                                        False, False, "",
+                                                        False, False, save_data_path,
                                                         enable_savestates, enable_multiprocessing) 
                                                         for sim_type in simulation_type])
                                                         
