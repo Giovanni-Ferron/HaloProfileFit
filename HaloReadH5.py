@@ -367,7 +367,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
         Nhalos_region = 0
         
         #HDF5 file names
-        basename = hdf5_path + sim_name + "/" + sim_type + "/" + region
+        basename = hdf5_path + sim_name + "/" + region + "/" + sim_type
         file_names = [os.path.normpath(f) for f in glob.glob(basename + "/*.hdf5")]
         
         if enable_savestates:
