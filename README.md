@@ -7,38 +7,56 @@ By default, the code fits halo mass profiles with 3D and 2D, NFW and gNFW models
 - 2D stacked profiles of mass, density and surface density excess.
 - Concentration-mass relation and sparsities.
 
-The `FitAndPlot.ipynb` notebook can be used as a cleaner starting point to analyze halo profiles from multiple cosmological simulations at a time, and it can be used to fit 3D mass, density and circular velocity, along with projected mass and density profiles with NFW and gNFW models. 
+The `FitAndPlot.ipynb` notebook can be used as a starting point to analyze halo profiles from multiple cosmological simulations at a time, and it can be used to fit 3D mass, density and circular velocity, along with projected mass and density profiles with NFW and gNFW models.
+The **\"Global code parameters\"** section allows to change global settings such as the location of the hdf5 files, the number of cosmological models to consider, the type of profile models and halo profile quantities to fit, and the folder for saving all generated plots.
 
-The **\"Global code parameters\"** section allows to change global settings such as the location of the hdf5 files, the number of cosmological models to consider, the type of profile models and halo profile quantities to fit, and the folder for saving all generated plots. 
+The `HaloProfileFit.py` script is a version of the code made to be run by terminal. It is less flexible than its notebook counterpart but the computed quantities are all the same (e.g. stacked profiles, concentration-mass relation and sparsities). Learn how to run the script in the "*Running from terminal*" section later.
 
-The `HaloReadH5.py` module contains all individual reading and fitting functions, along with a HaloModel class which allows to add custom profile models for fitting.
+Finally, the `HaloReadH5.py` module contains all individual reading and fitting functions, along with a HaloModel class which allows to add custom profile models for fitting.
 
 ## Basic functioning
 
-**The HDF5 files corresponding to each simulation must be arranged in a specific directory structure, where each file is contained in a folder named after the simulation model (names in the sim_type list), including folders for each region considered (names in the files_to_read list). The name of the HDF5 files themselves does not matter, but the names of the directories do.**
+**In order for the routine to find the HDF5 files, they must be arranged in one of two ways:**
+- The HDF5 files corresponding to each simulation must be arranged in a specific directory structure, where each file is contained in a folder named after the simulation model (names in the sim_type list), optionally including folders for each simulation region if you want to keep track of the region of origin of each halo. The name of the HDF5 files themselves does not matter, but the names of the directories do.
 
-For example, to consider three models LCDM, Model_1 and Model_2 (these names would be inserted into the sim_type list), including two different simulation regions Region_1 and Region_2, then the HDF5 files must be positioned in the corresponding simulation folders as follows:
+  For example, to consider three models LCDM, Model_1 and Model_2 (these names would be inserted into the sim_type list), including two different simulation regions Region_1 and Region_2, then the HDF5 files must be located in the corresponding simulation folders as follows:
 
-    hdf5_folder/simulation_name
-    ├───Region_1
-    │   ├───LCDM
-    │   │   └───LCDM_file_R1.hdf5
-    │   ├───Model_1
-    │   │   └───M1_file_R1.hdf5
-    │   └───Model_2
-    │       └───M2_file_R1.hdf5
-    └───Region_2
+        /simulation_name
         ├───LCDM
-        │   └───LCDM_file_R2.hdf5
+        │   ├───Region_1
+        │   │   └───LCDM_file_R1.hdf5
+        │   └───Region_2
+        │       └───LCDM_file_R2.hdf5
+        │       
         ├───Model_1
-        │   └───M1_file_R2.hdf5
+        │   ├───Region_1
+        │   │   └───M1_file_R1.hdf5
+        │   └───Region_2
+        │       └───M1_file_R2.hdf5
+        │
         └───Model_2
-            └───M2_file_R2.hdf5
+            ├───Region_1
+            │   └───M2_file_R1.hdf5
+            └───Region_2
+                └───M2_file_R2.hdf5
 
-Also note that the region folders do not necessarily have to correspond to actual simulation regions, but can be used for other kinds of subdivision: for example, they can represent the simulations at various redshifts, where each region folder corresponds to a certain snapshot.
-Once the HDF5 file reading and fitting is completed, all results are stored in nested dictionaries.
+  The "simulation_name" folder is optional and defaults to the same directory containing the routine, and is only used to store the generated plots and save files an ordered way.
+  Also note that the region folders do not necessarily have to correspond to actual simulation regions, but can be used for other kinds of subdivision: for example, they can represent the simulations at various redshifts, where each region folder corresponds to a certain snapshot.
 
-**In `FitAndPlot.ibynb` all quantites stored in the HDF5 files are assumed to be in physical units, except for the radial bins and densities which are assumed to be in units of the halo $r_{500c}$ (change this using the scale_lengths argument in GetSimProfiles).**
+- Alternatively, all files can just be stored in the same folder, but they must contain their corresponding simulation name (names in the sim_type list) and, optionally, their region of origin somewhere in their file name.
+In the case of the previous example:
+ 
+        /simulation_name
+        ├───LCDM_Region_1.hdf5
+        ├───LCDM_Region_2.hdf5
+        ├───Model_1_Region_1.hdf5
+        ├───Model_1_Region_2.hdf5
+        ├───Model_2_Region_1.hdf5
+        └───Model_2_Region_2.hdf5
+  
+Once the HDF5 file reading and profile fitting is completed, all results are stored in nested dictionaries.
+
+**All quantites stored in the HDF5 files are assumed to be in physical units, except for the radial bins and densities which are assumed to be in units of the halo $r_{500c}$ (change this using the scale_lengths argument in GetSimProfiles).**
 
 The **halo_profiles** dictionary contains all halo binned profiles, including their Poissonian uncertainties and the radial bin centers, for both the 3D case and all supplied 2D projections. 
 The dictionary is structured as follows:
@@ -57,7 +75,7 @@ The dictionary is structured as follows:
 
     BINNED_PROFILE_2D = {"MASS", "DENSITY", "DEN_CUM", "DELTA_SIGMA", "NUM", "CUM_NUM", "ERR_MASS", "ERR_DENSITY", "ERR_DEN_CUM", "ERR_DSIGMA", "R"}
 
-The **fit_pars** and **fit_cov** contain all halo best-fit parameters and covariances respectively, for each profile model and fit quantity supplied, and for both the 3D and 2D fits. 
+The **fit_pars** and **fit_cov** contain all halo best-fit parameters and covariances respectively, for each profile model and fit quantity supplied, and for both the 3D and 2D fits.
 
 **The dictionaries contain the log10 of the fitted free parameters $-$ except for chi2 and M200 $-$ and the covariances are those of the log10 parameters**.
 
@@ -96,6 +114,14 @@ Finally, the **halo_props** and **sim_props** are dictionaries containing proper
     - sim_props[sim_type].keys() = {"HALO_NUM_TOT", "HALO_NUM_REGION", "MPART", "COSM_PARS"}
 
 **All halo profiles and fit parameters are saved in physical units, except the 3D and 2D radial bins which are in units of $r_{500c}$. All overdensity radii and masses are computed with respect to the critical density of the Universe, rather than the background value. All lengths and masses are in Mpc and $\text{M}_\odot$ respectively, except for the velocity dispersions and circular velocities, which are measured in km/s.**
+
+## Running from terminal
+The `HaloProfileFit.py` script can be run directly from command line. It will read all HDF5 files from all provided simulations and fit their 3D and 2D NFW, and 3D gNFW mass profiles by default. It will not save any data or figures by default. In order to run the routine for the example in the previous section, computing all possible quantities and saving all read and fit data and figures, use the following command:
+
+    python HaloProfileFit.py LCDM Model_1 Model_2 --sim_name simulation_name -r Region_1 Region_2 -sd -cal -sp
+
+In this example, --sim_name specifies the simultion_name folder, -r specifies the simulation regions to consider, -sd saves all profiles and fit results to file in the "progress" folder, -cal computes the plots for all quantities (i.e fit parameters, stacked profiles, concentration-mass relations and sparsities) and -sp saves all figures in the "figures" folder.
+For a full list of available options use the --help flag.
 
 ## Enable savestates
 If a simulation is composed of many HDF5 files, the routine allows to select the number of files to read at a time, along with the region from which to read them, allowing to read all HDF5 files in batches.
