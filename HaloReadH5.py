@@ -367,13 +367,20 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
         Nhalos_region = 0
         
         #HDF5 file names
-        basename = hdf5_path + sim_name + "/" + region + "/" + sim_type
-        file_names = [os.path.normpath(f) for f in glob.glob(basename + "/*.hdf5")]
+        basename = hdf5_path + sim_name + "/" + sim_type + "/" + region
+        
+        if os.path.exists(basename):
+            file_names = [os.path.normpath(f) for f in glob.glob(basename + "/*.hdf5")]
+            
+        else:
+            glob_names = glob.glob(hdf5_path + sim_name + "/*" + sim_type + "*" + region + "*.hdf5") +\
+                                    glob.glob(hdf5_path + sim_name + "/*" + region + "*" + sim_type + "*.hdf5")
+            file_names = [os.path.normpath(f) for f in glob_names]
         
         if enable_savestates:
             #Define the folder where all progress is saved
             distdir = os.getcwd()
-            distname = "progress/" + sim_name + "/savestates/filenames_done/" + region + "/" + sim_type
+            distname = "progress/" + sim_name + "/savestates/filenames_done/" + sim_type + "/" + region
             distot = os.path.join(distdir, distname)
             
             #If the directory doesn't exist, create it
@@ -454,7 +461,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
 
                 for ii in ids:
                     #Particle masses if Mpart from attributes is zero
-                    if Mpart == 0:
+                    if np.any(Mpart) == 0:
                         Mpart = hdf["RadialProfiles"]["Group_%i_MassCum"%ii][:][-1] / hdf["RadialProfiles"]["Group_%i_NpartCum"%ii][:][-1]
                         
                         if h5_file_name == file_names[0]:
@@ -525,7 +532,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         Den_2D = data["Group_%i_Density2D"%ii + dim][:] / scale_r**2    #2D density inside a bin in M_sun/Mpc^2
                         Ncum_2D = data["Group_%i_NpartCum2D"%ii + dim][:]    #2D number of particles inside a bin
                         Nbin_2D = data["Group_%i_Npart2D"%ii + dim][:]    #2D cumulative number of particles
-    
+
                         #Compute mass Poisson errors
                         err_mass_2D = Mpart * np.sqrt(Ncum_2D)
                 
@@ -536,7 +543,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                                                    np.log10(bin_centers_2D) + 0.5 * np.diff(np.log10(bin_centers_2D))[0])
                         area_bins = np.pi * (bin_edges[1:]**2 - bin_edges[:-1]**2)
                         err_den_2D = Mpart * np.sqrt(Nbin_2D) / (area_bins * scale_r**2)
-    
+
                         #Cumulative surface density, in M_sun/Mpc^2
                         DenCum_2D = MassCum_2D / (np.pi * bin_edges_2D[1:]**2 * scale_r**2)
                         err_den_cum_2D = Mpart * np.sqrt(Ncum_2D) / (np.pi * bin_edges_2D[1:]**2 * scale_r**2)
@@ -563,7 +570,8 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                     
                     Nhalos_region += 1
                     Nhalos_tot += 1    #Add the number of halos in the file to the total number of halos the region
-                
+                        
+
     #####################################################################################################################
 
             if enable_savestates:
@@ -571,8 +579,8 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                 filenames_done.append(h5_file_name)
                 
                 #Create a save file with the current progress
-                np.savetxt("progress/" + sim_name + "/savestates/filenames_done/" + region + "/" 
-                            + sim_type + "/filenames.txt", filenames_done, fmt="%s")
+                np.savetxt("progress/" + sim_name + "/savestates/filenames_done/" + sim_type + "/" 
+                            + region + "/filenames.txt", filenames_done, fmt="%s")
 
     #####################################################################################################################
 
@@ -998,52 +1006,53 @@ def FitSimProfiles(halo_profiles, halo_props, sim_props, simulation_type, simula
             R500 = halo_props[sim_type]["R500"]
             cosm_params = sim_props[sim_type]["COSM_PARS"]
             
-            for n_dim in np.atleast_1d(n_dim_fits).tolist():
-                binned_profiles = halo_profiles[sim_type][n_dim]
-                
-                if n_dim == "3D":
-                    save_name = "save_state_3D.npz"
-
-                    if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
-                        print("DIMENSION: 3D")
-                        
-                        binned_profiles_fit = [binned_profiles[quantity] for quantity in fit_quantities_3D]
-                        binned_errors_fit = [binned_profiles["ERR_" + quantity] for quantity in fit_quantities_3D]
-                        
-                        fit_pars[sim_type][n_dim],\
-                        fit_cov[sim_type][n_dim] = FitProfiles(binned_profiles_fit, binned_errors_fit, 
-                                                                binned_profiles["R"], binned_profiles["NUM"], R500, 
-                                                                cosm_params, radius_fit_bounds_3D, profile_type_3D, 
-                                                                profile_quantity=fit_quantities_3D, projection=False)
-                                                            
-                    if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) and enable_savestates:
-                        #Save current progress to file in the "progress" folder
-                        np.savez(dirpath + "/" + n_dim + "/" + save_name, fit_pars=fit_pars[sim_type][n_dim], 
-                                                                            fit_cov=fit_cov[sim_type][n_dim])
-
-                elif n_dim == "2D":
-                    for dim in np.atleast_1d(dimensions).tolist():
-                        save_name = "save_state_2D" + dim + ".npz"
+            if ("3D" in n_dim_fits) or ("2D" in n_dim_fits):
+                for n_dim in np.atleast_1d(n_dim_fits).tolist():
+                    binned_profiles = halo_profiles[sim_type][n_dim]
                     
+                    if n_dim == "3D":
+                        save_name = "save_state_3D.npz"
+
                         if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
-                            print("DIMENSION: 2D" + dim)
+                            print("DIMENSION: 3D")
                             
-                            binned_profiles_fit = [binned_profiles[dim][quantity] for quantity in fit_quantities_2D]
-                            binned_errors_fit = [binned_profiles[dim]["ERR_" + quantity] for quantity in fit_quantities_2D]
+                            binned_profiles_fit = [binned_profiles[quantity] for quantity in fit_quantities_3D]
+                            binned_errors_fit = [binned_profiles["ERR_" + quantity] for quantity in fit_quantities_3D]
                             
-                            fit_pars[sim_type][n_dim][dim],\
-                            fit_cov[sim_type][n_dim][dim] = FitProfiles(binned_profiles_fit, binned_errors_fit, 
-                                                                        binned_profiles[dim]["R"], binned_profiles[dim]["NUM"], 
-                                                                        R500, cosm_params, radius_fit_bounds_2D, profile_type_2D, 
-                                                                        profile_quantity=fit_quantities_2D, projection=True)
-                                                                        
+                            fit_pars[sim_type][n_dim],\
+                            fit_cov[sim_type][n_dim] = FitProfiles(binned_profiles_fit, binned_errors_fit, 
+                                                                    binned_profiles["R"], binned_profiles["NUM"], R500, 
+                                                                    cosm_params, radius_fit_bounds_3D, profile_type_3D, 
+                                                                    profile_quantity=fit_quantities_3D, projection=False)
+                                                                
                         if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) and enable_savestates:
                             #Save current progress to file in the "progress" folder
-                            np.savez(dirpath + "/" + n_dim + "/" + save_name, fit_pars=fit_pars[sim_type][n_dim][dim],
-                                                                            fit_cov=fit_cov[sim_type][n_dim][dim])
+                            np.savez(dirpath + "/" + n_dim + "/" + save_name, fit_pars=fit_pars[sim_type][n_dim], 
+                                                                                fit_cov=fit_cov[sim_type][n_dim])
 
-            if enable_savestates and os.path.exists(dirpath):
-                fit_pars[sim_type], fit_cov[sim_type] = RestoreSavestatesFits(simulation_name, sim_type)
+                    elif n_dim == "2D":
+                        for dim in np.atleast_1d(dimensions).tolist():
+                            save_name = "save_state_2D" + dim + ".npz"
+                        
+                            if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) or (not enable_savestates):
+                                print("DIMENSION: 2D" + dim)
+                                
+                                binned_profiles_fit = [binned_profiles[dim][quantity] for quantity in fit_quantities_2D]
+                                binned_errors_fit = [binned_profiles[dim]["ERR_" + quantity] for quantity in fit_quantities_2D]
+                                
+                                fit_pars[sim_type][n_dim][dim],\
+                                fit_cov[sim_type][n_dim][dim] = FitProfiles(binned_profiles_fit, binned_errors_fit, 
+                                                                            binned_profiles[dim]["R"], binned_profiles[dim]["NUM"], 
+                                                                            R500, cosm_params, radius_fit_bounds_2D, profile_type_2D, 
+                                                                            profile_quantity=fit_quantities_2D, projection=True)
+                                                                            
+                            if (not os.path.isfile(dirpath + "/" + n_dim + "/" + save_name)) and enable_savestates:
+                                #Save current progress to file in the "progress" folder
+                                np.savez(dirpath + "/" + n_dim + "/" + save_name, fit_pars=fit_pars[sim_type][n_dim][dim],
+                                                                                fit_cov=fit_cov[sim_type][n_dim][dim])
+
+                if enable_savestates and os.path.exists(dirpath):
+                    fit_pars[sim_type], fit_cov[sim_type] = RestoreSavestatesFits(simulation_name, sim_type)
 
     if save_to_file and ( (not load_from_file) or (not os.path.isfile(save_data_path + "/halo_fits.npz")) ):
         np.savez(save_data_path + "/halo_fits.npz", fit_pars=fit_pars, fit_cov=fit_cov)

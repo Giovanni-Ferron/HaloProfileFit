@@ -5,17 +5,46 @@ Created on Mon Mar 23 16:28:38 2026
 @author: Giovanni Y. Ferron
 """
 
+#TODO: use glob to read all files without folder structure
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import rv_histogram
 from scipy.optimize import brentq
-import corner
 import os
+import corner
+import argparse
 import HaloReadH5
 
-# parser = argparse.ArgumentParser()
-# parser.add_argument("sim_folder", help="")
-# args = parser.parse_args()
+parser = argparse.ArgumentParser()
+parser.add_argument("sim_types", nargs="+", type=str, help="Names of the simulations to consider")
+parser.add_argument("-h5", "--h5folder", default="", type=str, help="Folder where the hdf5 files of every simulation are stored")
+parser.add_argument("--sim_name", default=".", type=str, help="Name of the folder containing all simulation type folders")
+parser.add_argument("-r", "--regions", default="", nargs="+", type=str, help="Simulation regions to consider, if any")
+parser.add_argument("-p", "--projections", default=["x", "y", "z"], nargs="+", type=str, help="Directions along which the projected quantities must be considered")
+parser.add_argument("-fd", "--fit_dims", default=["3D", "2D"], nargs="+", type=str, help="Number of dimensions of the profiles to fit")
+parser.add_argument("-m3d", "--mod_3D", default=["NFW", "gNFW"], nargs="+", type=str, help="Halo profile models to use in 3D fitting")
+parser.add_argument("-m2d", "--mod_2D", default="NFW", nargs="+", type=str, help="Halo profile models to use in 2D fitting")
+parser.add_argument("-q3d", "--quantity_3D", default="MASS", nargs="+", type=str, help="3D binned quantities to fit")
+parser.add_argument("-q2d", "--quantity_2D", default="MASS", nargs="+", type=str, help="2D binned quantities to fit")
+parser.add_argument("-mp", "--multiprocessing", action="store_true", help="Enable multiprocessing for reading and fitting all simulations")
+parser.add_argument("-svt", "--savestates", action="store_true", help="Enable savestates to track the reading and fitting progress, saved in the 'progress' folder")
+parser.add_argument("-sd", "--save_data", action="store_true", help="Save all read profiles and fitted parameters to a .npz file in the 'progress' folder")
+parser.add_argument("-ld", "--load_data", action="store_true", help="Load all read profiles and fitted parameters from a .npz file")
+parser.add_argument("-sp", "--save_plots", action="store_true", help="Save all generated plots to the 'figures' folder")
+parser.add_argument("-shp", "--show_plots", action="store_true", help="Show all generated plots during execution")
+parser.add_argument("-mth", "--mass_threshold", default=0., type=float, help="Threshold virial mass: discard all halos with NFW M200 lower than it")
+parser.add_argument("-cfi", "--comp_fits", action="store_true", help="Generate plots related to the fit parameters, only saved when flag -sp is active")
+parser.add_argument("-cga", "--comp_gamma", action="store_true", help="Generate plots related to the gNFW inner slope, only saved when flag -sp is active")
+parser.add_argument("-cst", "--comp_stacked", action="store_true", help="Generate plots related to the stacked profiles, only saved when flag -sp is active")
+parser.add_argument("-ccm", "--comp_cm", action="store_true", help="Generate plots related to the concentration-mass relation, only saved when flag -sp is active")
+parser.add_argument("-csp", "--comp_spars", action="store_true", help="Generate plots related to the halo sparsities, only saved when flag -sp is active")
+parser.add_argument("-cal", "--comp_all", action="store_true", help="Generate all possible plots, only saved when flag -sp is active")
+parser.add_argument("-stm", "--stacked_masses", nargs="+", default=None, type=float, help="Mass bin edges to compute stacked profiles at different mass scales")
+parser.add_argument("-str", "--stacked_radius", nargs="+", default=(1e-3, 5.), type=float, help="Radius interval to show in the stacked profiles plots")
+# parser.add_argument("-b3d", "--bounds_3D", default=[0.075, 1.5], nargs="+", help="")
+# parser.add_argument("-b2d", "--bounds_2D", default=[0.075, 1.5], nargs="+", help="")
+args = parser.parse_args()
 
 #Define G
 G_mpc = 4.302e-9    #In Msun^-1 * Mpc * km^2 * s^-2
@@ -25,16 +54,16 @@ G_mpc = 4.302e-9    #In Msun^-1 * Mpc * km^2 * s^-2
 #Simulation parameters
 #---------------------
 #Relative path of the directory containing the simulation folders, including "/" at the end (see README)
-hdf5_folder = ""
+hdf5_folder = args.h5folder
 #Name of the simulation, assigned to the top-level directory (see README), mostly used for naming saved figures and folders, default is "." for no name
-simulation_name = "SIDM"
+simulation_name = args.sim_name
 #Names of the individual simulation models (see README)
-simulation_type = ["LCDM", "rlp", "flp"]
+simulation_type = np.atleast_1d(args.sim_types)
 #Names of the region folders to read and corresponding maximum number of files to read in each, leave the region list as [""] for no regions
 #The number of files can be a list specifying the number of files to read in each individual region folder, leave None to read every file
-files_to_read = (["D3", "D4", "D5", "D10", "D15", "D16"], None)
+files_to_read = (np.atleast_1d(args.regions), None)
 #List of dimensions along which to consider the 2D profiles for reading and fitting, e.g. ["x", "y", "z"]
-projections = ["x", "y", "z"]
+projections = np.atleast_1d(args.projections)
 #Divide the simulations in batches to analyse separately, only used in the analysis section (if present, put the LCDM model in every batch first)
 #Leave as [simulation_type] for no batches
 simulation_batches = [simulation_type]
@@ -42,48 +71,48 @@ simulation_batches = [simulation_type]
 #Fitting parameters
 #------------------
 #List of dimensions to consider when fitting, e.g. ["3D", "2D"]
-fit_dimensions_num = ["3D", "2D"]
+fit_dimensions_num = np.atleast_1d(args.fit_dims)
 #List of profile models to fit in the 3D and 2D cases, e.g. ["NFW", "gNFW"]
-fit_profiles_3D = ["NFW", "gNFW"]
-fit_profiles_2D = ["NFW"]
+fit_profiles_3D = np.atleast_1d(args.mod_3D)
+fit_profiles_2D = np.atleast_1d(args.mod_2D)
 #List of halo profile types to fit in the 3D and 2D cases, e.g. ["MASS", "DENSITY"]
-fit_quantities_3D = ["MASS"]
-fit_quantities_2D = ["MASS"]
+fit_quantities_3D = np.atleast_1d(args.quantity_3D)
+fit_quantities_2D = np.atleast_1d(args.quantity_2D)
 #List of radial intervals for fitting the 3D and 2D profiles, each tuple contains the lower and upper radii for each fit model
-radius_fit_bounds_3D = [(0.075, 1.5), (0.075, 1.5)]
-radius_fit_bounds_2D = [(0.075, 1.5), (0.075, 1.5)]
+radius_fit_bounds_3D = [(0.1, 1.5), (0.1, 1.5)]
+radius_fit_bounds_2D = [(0.1, 1.5), (0.1, 1.5)]
 
 #Constraint parameters
 #---------------------
 #Used in the "constraint" section to set a lower limit to the mass of the sample in each simulation. 
 #Thus, only halos with M200_NFW > M_th are considered in the analysis
-M_th = 0.
+M_th = args.mass_threshold
 
 #File reading and saving parameters
 #----------------------------------
 #Enable multiprocessing for reading and fitting (see README)
-enable_multiprocessing = False
+enable_multiprocessing = args.multiprocessing
 #Enable savestates for reading and fitting (see README)
-enable_savestates = False
+enable_savestates = args.savestates
 #Set to True to save the halo profiles, properties and fitting parameters to file once reading and fitting is complete
 #The path to save the data to can also be specified, leave None to save to the default path (/progress/simulation_name)
-save_data = True
+save_data = args.save_data
 save_data_path = None
 #Set to True to load halo profiles, properties and fitting parameters from file instead of reading and fitting from zero
 #Only useful if the data was saved using save_data was enabled prior
-load_from_file = True
+load_from_file = args.load_data
 
 #Plotting parameters
 #Enable generating plots of the fitting parameters, gNFW inner slopes, stacked profiles, concentration-mass relation and sparsities
-show_fits = True
-show_gNFW_gamma = True
-show_stacked = True
-show_cM = True
-show_sparsity = True
+show_fits = args.comp_fits + args.comp_all
+show_gNFW_gamma = args.comp_gamma + args.comp_all
+show_stacked = args.comp_stacked + args.comp_all
+show_cM = args.comp_cm + args.comp_all
+show_sparsity = args.comp_spars + args.comp_all
 #True to save the generated plots to file
-save_plots = False
+save_plots = args.save_plots
 #True to show plots in Python
-show_plots = True
+show_plots = args.show_plots
 #Folder where the figures are saved 
 fig_path = "figures"
 #List of names corresponding to the simulations considered in the simulation_type list, used e.g. in the legends of all plots
@@ -109,10 +138,9 @@ if show_plots:
 
 else:
     plt.ioff()
-    
 
-#%%Read the 3D and 2D profiles
 
+#---------------------------------READ HALO PROFILES---------------------------------
 if __name__ == "__main__":
     halo_profiles,\
     halo_props,\
@@ -130,7 +158,7 @@ if __name__ == "__main__":
     sim_props_cut = sim_props.copy()
     
     
-#%%Fit the 3D and 2D profiles
+#---------------------------------3D AND 2D FITS---------------------------------
     fit_pars, fit_cov = HaloReadH5.FitSimProfilesMP(halo_profiles, halo_props, sim_props, simulation_type, simulation_name,
                                                       profile_type_3D=fit_profiles_3D, profile_type_2D=fit_profiles_2D, 
                                                       fit_quantities_3D=fit_quantities_3D, fit_quantities_2D=fit_quantities_2D,
@@ -147,8 +175,7 @@ if __name__ == "__main__":
     fit_cov_2D = {sim_type: fit_cov[sim_type]["2D"] for sim_type in simulation_type}
 
 
-    #%%Apply constraints on the dataset
-
+#---------------------------------APPLY CONSTRAINTS ON THE DATASET---------------------------------
     if M_th > 0:
         #Define new dictionaries to store the new halo profiles, fits and properties after applying the condition
         #All dictionaries have the same keys as the original ones, except for the "3D" and "2D" keys
@@ -164,11 +191,12 @@ if __name__ == "__main__":
         sim_props_cut = {sim_type: dict() for sim_type in simulation_type}
 
         for sim_type in simulation_type:
+            chi2 = fit_pars[sim_type]["3D"]["NFW"]["MASS"]["chi2"]
             M200 = fit_pars[sim_type]["3D"]["NFW"]["MASS"]["M200"]
 
             #Define the condition to select which halos to keep
             #-----------------------------------------------------#
-            cond = (M200 > M_th)
+            cond = (M200 > M_th) & (chi2 < np.inf)
             #-----------------------------------------------------#
             
             #Apply the set condition
@@ -190,100 +218,63 @@ if __name__ == "__main__":
 
             halo_props_cut[sim_type] = hprops[sim_type]
             sim_props_cut[sim_type] = sprops[sim_type]
-            
 
 
+
+#---------------------------------FIT RESULTS PLOTS---------------------------------
     if show_fits:
-        #%%Random profile fits
+    
+        #----Number of total and saved halos----
+        fig_N, ax_N = plt.subplots(2, 1, figsize=(10, 3), sharex=True, gridspec_kw={"height_ratios": [2, 1]})
+
+        N_cut = np.array([sim_props_cut[sim_type]["HALO_NUM_TOT"] for sim_type in simulation_type])
+        N_total = np.array([sim_props[sim_type]["HALO_NUM_TOT"] for sim_type in simulation_type])
+        names = [model_names[sim_type] for sim_type in simulation_type]
+
+        ax_N[0].plot(names, N_total, marker="o", label="Total halos", color="dimgrey")
+        ax_N[0].plot(names, N_cut, marker="o", label="Saved halos", color="tab:green")
+        ax_N[0].tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+        ax_N[0].tick_params(axis="y", which="both", labelsize=12)
+        ax_N[0].set_ylabel("$N_{halos}$", size=15)
+        ax_N[0].grid(color="lightgrey")
+        ax_N[0].ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+        ax_N[0].legend()
+        ax_N[0].yaxis.get_offset_text().set_fontsize(12)
+
+        ax_N[1].plot(names, N_cut / N_total, marker="o", color="tab:green")
+        ax_N[1].set_ylabel("Saved fraction", size=13)
+        ax_N[1].grid(color="lightgrey")
+        ax_N[1].tick_params(axis="x", which="both", labelsize=11.5)
+        ax_N[1].tick_params(axis="y", which="both", labelsize=12)
+
+        fig_N.subplots_adjust(hspace=0.)
         
+        if show_plots:
+            plt.show(block=True)
+
+        if save_plots:
+            fig_N.savefig(fig_dir + "/" + "saved_halos_num.pdf", dpi=300, bbox_inches="tight")
+            
+        plt.close()
+            
+        
+        #----Show random 3D profiles----
         #Number of halos to display in the plot
         Nto_display = 10
         #IDs of the random halos to display for each simulation, they are the same for both the 3D and 2D plots
         rand_ids = {sim_type: np.random.choice(halo_props_cut[sim_type]["ID"], size=Nto_display, replace=False) for sim_type in simulation_type}
-        
-        #%%%Show random 3D profiles
-        for k, sim_type in enumerate(simulation_type):
-            Nto_display_half = int(Nto_display / 2)
-            cosm_params = sim_props_cut[sim_type]["COSM_PARS"]
-            halo_ids = halo_props_cut[sim_type]["ID"]
-            
-            #Plot eight random fits
-            rand_idx = np.array([np.where(halo_ids == ids)[0][0] for ids in rand_ids[sim_type]])
-        
-            #Plot for each fitted quantity
-            for quantity in fit_quantities_3D:
-                fig_p, ax_p = plt.subplots(2, Nto_display_half, figsize=(10 + Nto_display, 8), sharey=True, sharex=True)
+
+        if "3D" in fit_dimensions_num:
+            for k, sim_type in enumerate(simulation_type):
+                Nto_display_half = int(Nto_display / 2)
+                cosm_params = sim_props_cut[sim_type]["COSM_PARS"]
+                halo_ids = halo_props_cut[sim_type]["ID"]
                 
-                for r in [0, 1]:
-                    fig_p.tight_layout()
-                    fig_p.subplots_adjust(hspace=0., wspace=0.)
+                #Plot eight random fits
+                rand_idx = np.array([np.where(halo_ids == ids)[0][0] for ids in rand_ids[sim_type]])
             
-                    if quantity == "MASS":
-                        fig_p.supylabel("$M(\!< r)\ [M_\odot]$", size=25, x=0.01)
-            
-                    elif quantity == "DENSITY":
-                        fig_p.supylabel("$\\rho(r)\ [M_\odot / Mpc^3]$", size=25, x=0.01)
-            
-                    elif quantity == "VCIRC":
-                        fig_p.supylabel("$v_{circ}(r)\ [km/s]$", size=25, x=0.01)
-                    
-                    fig_p.supxlabel("$r/r_{500}$", size=25, y=-0.017)
-                    fig_p.suptitle(simulation_name + " " + model_names[sim_type] + " 3D " + quantity.lower() + " fits", size=25, y=0.97)
-                    
-                    for i, k in zip(rand_idx[r * Nto_display_half:r * Nto_display_half + Nto_display_half], np.arange(0, Nto_display_half, dtype=int)):
-                        ax = ax_p[r, k]
-                        ax.axvline(1., ls = '--', color = 'red')
-                        ax.tick_params(axis="y", labelsize=23, size=5)
-                        ax.minorticks_on()
-        
-                        if r == 0:
-                            ax.tick_params(axis="x", which="both", bottom=True, labelbottom=True, direction="in", size=3)
-        
-                        else:
-                            ax.tick_params(axis="x", which="both", labelsize=23, size=3)
-                    
-                        #Plot the binned profiles
-                        r500 = halo_props_cut[sim_type]["R500"][i]
-                        binned_profile = halo_profiles_3D[sim_type][quantity][i, :]
-                        binned_err = halo_profiles_3D[sim_type]["ERR_" + quantity][i, :]
-                        num = halo_profiles_3D[sim_type]["NUM"][i, :]
-                        R = halo_profiles_3D[sim_type]["R"][i, :] * r500
-                        cond = (num != 0)
-        
-                        #Plot each profile model fit
-                        for p_type in fit_profiles_3D:
-                            halo_model = HaloReadH5.HaloModel(p_type)
-                            lhalo_pars = [fit_pars_3D[sim_type][p_type][quantity][par_name][i] for par_name in halo_model.free_par_names]
-                            
-                            lr200 = fit_pars_3D[sim_type][p_type][quantity]["r200"][i]
-                            lrs = fit_pars_3D[sim_type][p_type][quantity]["rs"][i]
-                            chi2 = fit_pars_3D[sim_type][p_type][quantity]["chi2"][i]
-        
-                            if p_type == "NFW":
-                                ax.axvline(10**lr200 / r500, ls = '--', color = 'grey')
-                                ax.axvline(10**lrs / r500, ls = '--', color = 'black')
-                            
-                            ax.errorbar(R[cond] / r500, binned_profile[cond], yerr = binned_err[cond], fmt='d', barsabove = True, color = 'black')
-                            ax.loglog(R[cond] / r500, halo_model.profile(np.log10(R[cond]), *lhalo_pars, cosm_params=cosm_params, quantity=quantity), 
-                                                                                                      label="$\chi_{" + p_type + "}^2$ = " + f"{chi2:.2f}")
-        
-                            ax.legend(prop={"size": 18})
-        
-                if save_plots:
-                    fig_p.savefig(fig_dir + sim_type + "/" + "fit_profiles_" + sim_type + ".pdf", dpi=300, bbox_inches='tight')    
-          
-        
-        #%%%Show random 2D profiles
-        for k, sim_type in enumerate(simulation_type):
-            cosm_params = sim_props_cut[sim_type]["COSM_PARS"]
-            halo_ids = halo_props_cut[sim_type]["ID"]
-            
-            #Plot eight random fits
-            rand_idx = np.array([np.where(halo_ids == ids)[0][0] for ids in rand_ids[sim_type]])
-        
-            #Plot for each 2D projection
-            for dim in projections:
-                for quantity in fit_quantities_2D:
+                #Plot for each fitted quantity
+                for quantity in fit_quantities_3D:
                     fig_p, ax_p = plt.subplots(2, Nto_display_half, figsize=(10 + Nto_display, 8), sharey=True, sharex=True)
                     
                     for r in [0, 1]:
@@ -291,16 +282,20 @@ if __name__ == "__main__":
                         fig_p.subplots_adjust(hspace=0., wspace=0.)
                 
                         if quantity == "MASS":
-                            fig_p.supylabel("$M_{proj}(\!< R)\ [M_\odot]$", size=25, x=0.01)
+                            fig_p.supylabel("$M(\!< r)\ [M_\odot]$", size=25, x=0.01)
                 
                         elif quantity == "DENSITY":
-                            fig_p.supylabel("$\Sigma(R)\ [M_\odot / Mpc^2]$", size=25, x=0.01)
+                            fig_p.supylabel("$\\rho(r)\ [M_\odot / Mpc^3]$", size=25, x=0.01)
+                
+                        elif quantity == "VCIRC":
+                            fig_p.supylabel("$v_{circ}(r)\ [km/s]$", size=25, x=0.01)
                         
-                        fig_p.supxlabel("$R/r_{500}$", size=25, y=-0.017)
-                        fig_p.suptitle(simulation_name + " " + model_names[sim_type] + " 2D" + dim + " " + quantity.lower() + " fits", size=25, y=0.97)
+                        fig_p.supxlabel("$r/r_{500}$", size=25, y=-0.017)
+                        fig_p.suptitle(simulation_name + " " + model_names[sim_type] + " 3D " + quantity.lower() + " fits", size=25, y=0.97)
                         
                         for i, k in zip(rand_idx[r * Nto_display_half:r * Nto_display_half + Nto_display_half], np.arange(0, Nto_display_half, dtype=int)):
                             ax = ax_p[r, k]
+                            ax.axvline(1., ls = '--', color = 'red')
                             ax.tick_params(axis="y", labelsize=23, size=5)
                             ax.minorticks_on()
             
@@ -312,156 +307,285 @@ if __name__ == "__main__":
                         
                             #Plot the binned profiles
                             r500 = halo_props_cut[sim_type]["R500"][i]
-                            binned_profile = halo_profiles_2D[sim_type][dim][quantity][i, :]
-                            binned_err = halo_profiles_2D[sim_type][dim]["ERR_" + quantity][i, :]
-                            num = halo_profiles_2D[sim_type][dim]["NUM"][i, :]
-                            R = halo_profiles_2D[sim_type][dim]["R"][i, :] * r500
+                            binned_profile = halo_profiles_3D[sim_type][quantity][i, :]
+                            binned_err = halo_profiles_3D[sim_type]["ERR_" + quantity][i, :]
+                            num = halo_profiles_3D[sim_type]["NUM"][i, :]
+                            R = halo_profiles_3D[sim_type]["R"][i, :] * r500
                             cond = (num != 0)
-        
+            
                             #Plot each profile model fit
-                            for p_type in fit_profiles_2D:
+                            for p_type in fit_profiles_3D:
                                 halo_model = HaloReadH5.HaloModel(p_type)
-                                lhalo_pars = [fit_pars_2D[sim_type][dim][p_type][quantity][par_name][i] for par_name in halo_model.free_par_names]
+                                lhalo_pars = [fit_pars_3D[sim_type][p_type][quantity][par_name][i] for par_name in halo_model.free_par_names]
                                 
-                                lr200 = fit_pars_2D[sim_type][dim][p_type][quantity]["r200"][i]
-                                lrs = fit_pars_2D[sim_type][dim][p_type][quantity]["rs"][i]
-                                chi2 = fit_pars_2D[sim_type][dim][p_type][quantity]["chi2"][i]
+                                lr200 = fit_pars_3D[sim_type][p_type][quantity]["r200"][i]
+                                lrs = fit_pars_3D[sim_type][p_type][quantity]["rs"][i]
+                                chi2 = fit_pars_3D[sim_type][p_type][quantity]["chi2"][i]
+            
+                                if p_type == "NFW":
+                                    ax.axvline(10**lr200 / r500, ls = '--', color = 'grey')
+                                    ax.axvline(10**lrs / r500, ls = '--', color = 'black')
                                 
                                 ax.errorbar(R[cond] / r500, binned_profile[cond], yerr = binned_err[cond], fmt='d', barsabove = True, color = 'black')
-                                ax.loglog(R[cond] / r500, halo_model.profile(np.log10(R[cond]), *lhalo_pars, cosm_params=cosm_params, quantity=quantity,
-                                                                                                          projection=True),
+                                ax.loglog(R[cond] / r500, halo_model.profile(np.log10(R[cond]), *lhalo_pars, cosm_params=cosm_params, quantity=quantity), 
                                                                                                           label="$\chi_{" + p_type + "}^2$ = " + f"{chi2:.2f}")
             
                                 ax.legend(prop={"size": 18})
             
-                    if save_plots:
-                        fig_p.savefig(fig_dir + sim_type + "/" + "fit_profiles_2D" + dim + "_" + sim_type + ".pdf", dpi=300, bbox_inches='tight')      
-                        
-                        
-        #%%Fit parameters
-        
-        #%%%Fit parameters distributions
-        for sim_type in simulation_type:
-            for p_type in fit_profiles_3D:
-                for q, quantity in enumerate(fit_quantities_3D):
-                    par_keys = list(fit_pars_3D[sim_type][p_type][quantity].keys())[-3::-1]
-                    params_data = np.array([fit_pars_3D[sim_type][p_type][quantity][name] for name in par_keys]).T
-                    
-                    fig_corner = corner.corner(params_data, plot_datapoints=False, plot_density=False, levels=[0.32, 0.68, 0.95], bins=25, 
-                                               labels=par_keys, label_kwargs={"fontsize": 15}, color="darkcyan")
-                    plt.suptitle(simulation_name + " - 3D " + model_names[sim_type] + " " + p_type + " " + quantity + " fits", size=16)
-                
-                    if save_plots:
-                        fig_corner.savefig(fig_dir + sim_type + "/" + p_type + "_fit_distr.pdf", dpi=300, bbox_inches="tight")    
-                        
-                        
-        #%%%3D chi-square distributions
-        for quantity in fit_quantities_3D:
-            fig, ax = plt.subplots(2, len(simulation_type), figsize=(14, 4), sharex="col", sharey="row")
+                    if show_plots:
+                        plt.show(block=True)
             
-            for i, sim_type in enumerate(simulation_type):
+                    if save_plots:
+                        fig_p.savefig(fig_dir + "/" + sim_type + "/" + "fit_profiles_" + sim_type + ".pdf", dpi=300, bbox_inches='tight')
+                        
+                    plt.close()
+          
+        
+        #----Show random 2D profiles----
+        if "2D" in fit_dimensions_num:
+            for k, sim_type in enumerate(simulation_type):
+                cosm_params = sim_props_cut[sim_type]["COSM_PARS"]
+                halo_ids = halo_props_cut[sim_type]["ID"]
+                
+                #Plot eight random fits
+                rand_idx = np.array([np.where(halo_ids == ids)[0][0] for ids in rand_ids[sim_type]])
+            
+                #Plot for each 2D projection
+                for dim in projections:
+                    for quantity in fit_quantities_2D:
+                        fig_p, ax_p = plt.subplots(2, Nto_display_half, figsize=(10 + Nto_display, 8), sharey=True, sharex=True)
+                        
+                        for r in [0, 1]:
+                            fig_p.tight_layout()
+                            fig_p.subplots_adjust(hspace=0., wspace=0.)
+                    
+                            if quantity == "MASS":
+                                fig_p.supylabel("$M_{proj}(\!< R)\ [M_\odot]$", size=25, x=0.01)
+                    
+                            elif quantity == "DENSITY":
+                                fig_p.supylabel("$\Sigma(R)\ [M_\odot / Mpc^2]$", size=25, x=0.01)
+                            
+                            fig_p.supxlabel("$R/r_{500}$", size=25, y=-0.017)
+                            fig_p.suptitle(simulation_name + " " + model_names[sim_type] + " 2D" + dim + " " + quantity.lower() + " fits", size=25, y=0.97)
+                            
+                            for i, k in zip(rand_idx[r * Nto_display_half:r * Nto_display_half + Nto_display_half], np.arange(0, Nto_display_half, dtype=int)):
+                                ax = ax_p[r, k]
+                                ax.tick_params(axis="y", labelsize=23, size=5)
+                                ax.minorticks_on()
+                
+                                if r == 0:
+                                    ax.tick_params(axis="x", which="both", bottom=True, labelbottom=True, direction="in", size=3)
+                
+                                else:
+                                    ax.tick_params(axis="x", which="both", labelsize=23, size=3)
+                            
+                                #Plot the binned profiles
+                                r500 = halo_props_cut[sim_type]["R500"][i]
+                                binned_profile = halo_profiles_2D[sim_type][dim][quantity][i, :]
+                                binned_err = halo_profiles_2D[sim_type][dim]["ERR_" + quantity][i, :]
+                                num = halo_profiles_2D[sim_type][dim]["NUM"][i, :]
+                                R = halo_profiles_2D[sim_type][dim]["R"][i, :] * r500
+                                cond = (num != 0)
+            
+                                #Plot each profile model fit
+                                for p_type in fit_profiles_2D:
+                                    halo_model = HaloReadH5.HaloModel(p_type)
+                                    lhalo_pars = [fit_pars_2D[sim_type][dim][p_type][quantity][par_name][i] for par_name in halo_model.free_par_names]
+                                    
+                                    lr200 = fit_pars_2D[sim_type][dim][p_type][quantity]["r200"][i]
+                                    lrs = fit_pars_2D[sim_type][dim][p_type][quantity]["rs"][i]
+                                    chi2 = fit_pars_2D[sim_type][dim][p_type][quantity]["chi2"][i]
+                                    
+                                    ax.errorbar(R[cond] / r500, binned_profile[cond], yerr = binned_err[cond], fmt='d', barsabove = True, color = 'black')
+                                    ax.loglog(R[cond] / r500, halo_model.profile(np.log10(R[cond]), *lhalo_pars, cosm_params=cosm_params, quantity=quantity,
+                                                                                                              projection=True),
+                                                                                                              label="$\chi_{" + p_type + "}^2$ = " + f"{chi2:.2f}")
+                
+                                    ax.legend(prop={"size": 18})
+                                    
+                        if show_plots:
+                            plt.show(block=True)
+                
+                        if save_plots:
+                            fig_p.savefig(fig_dir + "/" + sim_type + "/" + "fit_profiles_2D" + dim + "_" + sim_type + ".pdf", dpi=300, bbox_inches='tight')      
+                            
+                        plt.close()
+
+
+        #----Fit parameters corner-plots----
+        if "3D" in fit_dimensions_num:
+            for sim_type in simulation_type:
+                #3D fits
                 for p_type in fit_profiles_3D:
-                    chi2 = fit_pars_3D[sim_type][p_type][quantity]["chi2"]
-            
-                    chi2_hist = ax[0, i].hist(np.log10(chi2), bins="fd", histtype="step", density=True, label=p_type)
-                    ax[0, i].axvline(0., color="black", ls="--")
-                    ax[0, i].set_title(model_names[sim_type], size=14)
-                    ax[0, i].tick_params(axis="x", which="both", bottom=False, labelbottom=False)
-            
-                    if i != 0:
-                        ax[0, i].tick_params(axis="y", which="both", left=False, labelleft=False)
-                        ax[1, i].tick_params(axis="y", which="both", left=False, labelleft=False)
-            
-                    chi2_cum = rv_histogram((chi2_hist[0], chi2_hist[1])).cdf(np.sort(np.log10(chi2)))
-                    lchi_less2 = rv_histogram((chi2_hist[0], chi2_hist[1])).cdf(np.log10(2))
+                    for q, quantity in enumerate(fit_quantities_3D):
+                        par_keys = list(fit_pars_3D[sim_type][p_type][quantity].keys())[-3::-1]
+                        params_data = np.array([fit_pars_3D[sim_type][p_type][quantity][name] for name in par_keys]).T
+                        
+                        fig_corner = corner.corner(params_data, plot_datapoints=False, plot_density=False, levels=[0.32, 0.68, 0.95], bins=25, 
+                                                   labels=par_keys, label_kwargs={"fontsize": 15}, color="darkcyan")
+                        plt.suptitle("3D " + model_names[sim_type] + " " + p_type + " " + quantity + " fits", size=16)
+                        
+                        if show_plots:
+                            plt.show(block=True)
                     
-                    line, = ax[1, i].plot(np.sort(np.log10(chi2)), chi2_cum)
-                    ax[1, i].axvline(np.log10(2), color="grey", linestyle="-.", alpha=0.5)
-                    ax[1, i].axhline(lchi_less2, linestyle="--", color=line.get_color(), alpha=0.5)
-                
-                ax[0, i].set_yticks([0.2, 0.6, 1.])
-                ax[0, i].grid(color="lightgrey", axis="y")
-            
-                ax[1, i].tick_params(axis="x", which="both", labelsize=12)
-            
-            ax[0, 0].tick_params(axis="y", which="both", labelsize=13)
-            ax[0, 0].set_ylabel("$PDF$", size=16)
-            ax[0, 0].legend(prop={"size": 13})
-            ax[1, 0].set_ylabel("$P(< \chi^2)$", size=16)
-            ax[1, 0].tick_params(axis="y", which="both", labelsize=13)
-        
-            fig.suptitle("3D " + quantity + " fits $\chi^2_{dof}$ distribution", size=16, y=1.05)
-            fig.supxlabel("$\log{\chi^2_{dof}}$", size=16, y=-0.04)
-            fig.subplots_adjust(wspace=0.05, hspace=0.)
-            
-            if save_plots:
-                fig.savefig(fig_dir + "/chi2_distr_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
-             
-                
-        #%%%2D chi-square distributions
-        for quantity in fit_quantities_2D:
-            fig, ax = plt.subplots(2, len(simulation_type), figsize=(14, 4), sharex="col", sharey="row")
-        
-            for dim in projections:
-                for i, sim_type in enumerate(simulation_type):
+                        if save_plots:
+                            fig_corner.savefig(fig_dir + "/" + sim_type + "/" + p_type + "_3D_fit_distr.pdf", dpi=300, bbox_inches="tight")
+                            
+                        plt.close()
+                        
+            #2D fits
+            if "2D" in fit_dimensions_num:
+                for dim in projections:
                     for p_type in fit_profiles_2D:
-                        chi2 = fit_pars_2D[sim_type][dim][p_type][quantity]["chi2"]
+                        for q, quantity in enumerate(fit_quantities_2D):
+                            par_keys = list(fit_pars_2D[sim_type][dim][p_type][quantity].keys())[-3::-1]
+                            params_data = np.array([fit_pars_2D[sim_type][dim][p_type][quantity][name] for name in par_keys]).T
+                            
+                            fig_corner = corner.corner(params_data, plot_datapoints=False, plot_density=False, levels=[0.32, 0.68, 0.95], bins=25, 
+                                                       labels=par_keys, label_kwargs={"fontsize": 15}, color="darkcyan")
+                            plt.suptitle("2D" + dim + " " + model_names[sim_type] + " " + p_type + " " + quantity + " fits", size=16)
+                            
+                            if show_plots:
+                                plt.show(block=True)
+                        
+                            if save_plots:
+                                fig_corner.savefig(fig_dir + "/" + sim_type + "/" + p_type + "_2D" + dim + "_fit_distr.pdf", dpi=300, bbox_inches="tight")
+                            
+                            plt.close()
+                        
+        #----3D chi-square distributions----
+        if "3D" in fit_dimensions_num:
+            for quantity in fit_quantities_3D:
+                fig, ax = plt.subplots(2, len(simulation_type), figsize=(14, 4), sharex="col", sharey="row")
                 
-                        chi2_hist = ax[0, i].hist(np.log10(chi2), bins="fd", histtype="step", density=True, label=p_type +  " " + dim)
-                        ax[0, i].axvline(0., color="black", ls="--")
-                        ax[0, i].set_title(model_names[sim_type], size=14)
-                        ax[0, i].tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+                for i, sim_type in enumerate(simulation_type):
+                    if len(simulation_type) > 1:
+                        ax0 = ax[0, i]
+                        ax1 = ax[1, i]
+                
+                    else:
+                        ax0 = ax[0]
+                        ax1 = ax[1]
+                    
+                    for p_type in fit_profiles_3D:
+                        chi2 = fit_pars_3D[sim_type][p_type][quantity]["chi2"]
+                
+                        chi2_hist = ax0.hist(np.log10(chi2), bins="fd", histtype="step", density=True, label=p_type)
+                        ax0.axvline(0., color="black", ls="--")
+                        ax0.set_title(model_names[sim_type], size=14)
+                        ax0.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
                 
                         if i != 0:
-                            ax[0, i].tick_params(axis="y", which="both", left=False, labelleft=False)
-                            ax[1, i].tick_params(axis="y", which="both", left=False, labelleft=False)
+                            ax0.tick_params(axis="y", which="both", left=False, labelleft=False)
+                            ax1.tick_params(axis="y", which="both", left=False, labelleft=False)
                 
                         chi2_cum = rv_histogram((chi2_hist[0], chi2_hist[1])).cdf(np.sort(np.log10(chi2)))
                         lchi_less2 = rv_histogram((chi2_hist[0], chi2_hist[1])).cdf(np.log10(2))
                         
-                        line, = ax[1, i].plot(np.sort(np.log10(chi2)), chi2_cum)
-                        ax[1, i].axvline(np.log10(2), color="grey", linestyle="-.", alpha=0.5)
-                        ax[1, i].axhline(lchi_less2, linestyle="--", color=line.get_color(), alpha=0.5)
+                        line, = ax1.plot(np.sort(np.log10(chi2)), chi2_cum)
+                        ax1.axvline(np.log10(2), color="grey", linestyle="-.", alpha=0.5)
+                        ax1.axhline(lchi_less2, linestyle="--", color=line.get_color(), alpha=0.5)
                     
-                    ax[0, i].set_yticks([0.2, 0.6, 1.])
-                    ax[0, i].grid(color="lightgrey", axis="y")
+                    ax0.set_yticks([0.2, 0.6, 1.])
+                    ax0.grid(color="lightgrey", axis="y")
                 
-                    ax[1, i].tick_params(axis="x", which="both", labelsize=12)
+                    ax1.tick_params(axis="x", which="both", labelsize=12)
                 
-                ax[0, 0].tick_params(axis="y", which="both", labelsize=13)
-                ax[0, 0].set_ylabel("$PDF$", size=16)
-                ax[0, 0].legend(prop={"size": 12})
-                ax[1, 0].set_ylabel("$P(< \chi^2)$", size=16)
-                ax[1, 0].tick_params(axis="y", which="both", labelsize=13)
+                    if i == 0:
+                        ax0.tick_params(axis="y", which="both", labelsize=13)
+                        ax0.set_ylabel("$PDF$", size=16)
+                        ax0.legend(prop={"size": 13})
+                        ax1.set_ylabel("$P(< \chi^2)$", size=16)
+                        ax1.tick_params(axis="y", which="both", labelsize=13)
             
-                fig.suptitle("2D " + quantity + " fits $\chi^2_{dof}$ distribution", size=16, y=1.05)
+                fig.suptitle("3D " + quantity + " fits $\chi^2_{dof}$ distribution", size=16, y=1.05)
                 fig.supxlabel("$\log{\chi^2_{dof}}$", size=16, y=-0.04)
                 fig.subplots_adjust(wspace=0.05, hspace=0.)
                 
+                if show_plots:
+                    plt.show(block=True)
+                
                 if save_plots:
-                    fig.savefig(fig_dir + "/chi2_distr_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
+                    fig.savefig(fig_dir + "/chi2_distr_3D_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
+                 
+                plt.close()
+                
+        #----2D chi-square distributions----
+        if "2D" in fit_dimensions_num:
+            for quantity in fit_quantities_2D:
+                fig, ax = plt.subplots(2, len(simulation_type), figsize=(14, 4), sharex="col", sharey="row")
+            
+                for dim in projections:
+                    for i, sim_type in enumerate(simulation_type):
+                        if len(simulation_type) > 1:
+                            ax0 = ax[0, i]
+                            ax1 = ax[1, i]
+                
+                        else:
+                            ax0 = ax[0]
+                            ax1 = ax[1]
+                        
+                        for p_type in fit_profiles_2D:
+                            chi2 = fit_pars_2D[sim_type][dim][p_type][quantity]["chi2"]
+                    
+                            chi2_hist = ax0.hist(np.log10(chi2), bins="fd", histtype="step", density=True, label=p_type +  " " + dim)
+                            ax0.axvline(0., color="black", ls="--")
+                            ax0.set_title(model_names[sim_type], size=14)
+                            ax0.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+                    
+                            if i != 0:
+                                ax0.tick_params(axis="y", which="both", left=False, labelleft=False)
+                                ax1.tick_params(axis="y", which="both", left=False, labelleft=False)
+                    
+                            chi2_cum = rv_histogram((chi2_hist[0], chi2_hist[1])).cdf(np.sort(np.log10(chi2)))
+                            lchi_less2 = rv_histogram((chi2_hist[0], chi2_hist[1])).cdf(np.log10(2))
+                            
+                            line, = ax1.plot(np.sort(np.log10(chi2)), chi2_cum)
+                            ax1.axvline(np.log10(2), color="grey", linestyle="-.", alpha=0.5)
+                            ax1.axhline(lchi_less2, linestyle="--", color=line.get_color(), alpha=0.5)
+                        
+                        ax0.set_yticks([0.2, 0.6, 1.])
+                        ax0.grid(color="lightgrey", axis="y")
+                    
+                        ax1.tick_params(axis="x", which="both", labelsize=12)
+                    
+                        if i == 0:
+                            ax0.tick_params(axis="y", which="both", labelsize=13)
+                            ax0.set_ylabel("$PDF$", size=16)
+                            ax0.legend(prop={"size": 12})
+                            ax1.set_ylabel("$P(< \chi^2)$", size=16)
+                            ax0.tick_params(axis="y", which="both", labelsize=13)
+                
+                    fig.suptitle("2D " + quantity + " fits $\chi^2_{dof}$ distribution", size=16, y=1.05)
+                    fig.supxlabel("$\log{\chi^2_{dof}}$", size=16, y=-0.04)
+                    fig.subplots_adjust(wspace=0.05, hspace=0.)
+                    
+                    if show_plots:
+                        plt.show(block=True)
+                    
+                    if save_plots:
+                        fig.savefig(fig_dir + "/chi2_distr_2D_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
+                    
+                    plt.close()
 
 
+
+#---------------------------------GNFW INNER SLOPE---------------------------------
     if show_gNFW_gamma:
-        #%%gNFW inner slope distribution
         
         #Set mass bins
-        mass_0 = np.log10(fit_pars_3D[simulation_type[0]]["NFW"]["MASS"]["M200"])
-        
-        #-------------------------------------#
-        cond_0 = (mass_0 < 16)
-        #-------------------------------------#
+        mass_0 = np.log10(fit_pars_3D[simulation_type[0]]["gNFW"]["MASS"]["M200"])
         
         #Set the mass bins edges as quantiles of the LCDM M200 distribution, as to guarantee a similar number of halos in each bin 
-        mass_bins = np.quantile(mass_0[cond_0], np.linspace(0., 1., 5))
+        mass_bins = np.quantile(mass_0, np.linspace(0., 1., 5))
         bin_centers = mass_bins[:-1] + np.diff(mass_bins) / 2
         
-        print("Log virial mass bins:")
+        print("Log virial mass bins for gNFW gamma:")
         for m in mass_bins:
             print(f"{m:.2f}")
             
         
-        #Plot gNFW gamma distribution
+        #----Plot gNFW gamma distribution----
         for quantity in fit_quantities_3D:
             for b, sim_batch in enumerate(simulation_batches):
                 fig = plt.figure(figsize=(8, 5))
@@ -469,36 +593,112 @@ if __name__ == "__main__":
                 for sim_type in sim_batch:
                     gamma = 10**fit_pars_3D[sim_type]["gNFW"][quantity]["gamma"]
                 
-                    #Do not consider unconstrained gNFW fits
+                    #Constraint on gNFW gamma
                     #--------------------------#
-                    cond_gamma = (gamma > 1e-5)
+                    cond_gamma = (gamma > 0.)
                     #--------------------------#
                 
                     plt.hist(gamma[cond_gamma], bins="fd", histtype="step", density=True, label=model_names[sim_type])
                     plt.xlabel("$\gamma$", size=15)
                     plt.title("gNFW " + quantity + " fits", size=16)
                     plt.legend()
-            
+                    
+                if show_plots:
+                    plt.show(block=True)
+
                 if save_plots:
-                    fig.savefig(fig_dir + "/gNFW_disr_" + quantity + "_" + str(b) + ".pdf", dpi=300, bbox_inches='tight')
+                    fig.savefig(fig_dir + "/gNFW_distr_" + quantity + "_" + str(b) + ".pdf", dpi=300, bbox_inches='tight')
+                    
+                plt.close()
+                    
+                    
+        #----Plot median gNFW gamma----
+        gamma_med = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
+        gamma_up = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
+        gamma_down = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
+
+        for b, sim_batch in enumerate(simulation_batches):
+            fig, ax = plt.subplots(2, 1, figsize=(6, 4.5), 
+                                   sharex="col", sharey="row", gridspec_kw={"height_ratios": [2, 1]})
+
+            for i, sim_type in enumerate(sim_batch):    
+                gamma_all = 10**fit_pars_3D[sim_type]["gNFW"]["MASS"]["gamma"]
+                M200 = fit_pars_3D[sim_type]["gNFW"]["MASS"]["M200"]
+                chi2 = fit_pars_3D[sim_type]["gNFW"]["MASS"]["chi2"]
+            
+                #Do not consider unconstrained gNFW fits
+                #---------------------------------#
+                cond = (gamma_all > 0.)
+                #---------------------------------#
+            
+                gamma = gamma_all[cond]
+                lM200 = np.log10(M200[cond])
+            
+                #Divide the halos in mass intervals based on their M200 NFW from the mass fits    
+                for k in range(len(mass_bins) - 1):
+                    idx = np.where(np.logical_and(lM200 >= mass_bins[k], lM200 < mass_bins[k + 1]))[0]
+                    
+                    gamma_med[sim_type][k] = np.median(gamma[idx])
+                    gamma_down[sim_type][k], gamma_up[sim_type][k] = np.quantile(gamma[idx], [0.16, 0.84])
+            
+                #3D
+                if sim_type == sim_batch[0]:
+                    ax[0].fill_between(bin_centers, gamma_down[sim_type], gamma_up[sim_type], color="black", alpha=0.1)
+                    ax[0].plot(bin_centers, gamma_med[sim_type], label=model_names[sim_type], lw=1., c="black")
+            
+                else:
+                    line, = ax[0].plot(bin_centers, gamma_med[sim_type], label=model_names[sim_type], lw=1.)
+            
+                    med_diff = (gamma_med[sim_type] - gamma_med[sim_batch[0]]) / gamma_med[sim_batch[0]]
+                    ax[1].plot(bin_centers, med_diff, lw=1., c=line.get_color())
+            
+                ax[0].set_title("3D " + quantity + " fits", size=16)
+                ax[0].set_ylabel("$\gamma$", size=15)
+                ax[0].legend(prop={"size": 11})
+                ax[0].tick_params(axis="y", which="both", labelsize=15)
+            
+                ax[1].axhline(0., ls="-", c="black", alpha=0.6)
+                ax[1].set_xlabel("$\log{M_{200} / M_\odot}$", size=15)
+                ax[1].set_ylabel("$\Delta \gamma\ /\ \gamma_{" + sim_batch[0] + "}$", size=15)
+                ax[1].tick_params(axis="y", which="both", labelsize=15)
+                ax[1].tick_params(axis="x", which="both", labelsize=15)
+            
+                for m in mass_bins:
+                    ax[0].axvline(m, ls="-", lw=0.5, color="grey")
+                    ax[1].axvline(m, ls="-", lw=0.5, color="grey")
+            
+                fig.subplots_adjust(hspace=0., wspace=0.05)
                 
+            if show_plots:
+                plt.show(block=True)
+            
+            if save_plots:
+                fig.savefig(fig_dir + "/gammaM_relation_diff_" + str(b) + ".pdf", dpi=300, bbox_inches='tight')
                 
-    #%%Stacked halo profiles
+            plt.close()
+
+
+
+#---------------------------------STACKED PROFILES---------------------------------
     if show_stacked:
-        #Virial mass in Msun for each halo in the LCDM model, used to divide all halos in mass bins
-        M200_lcdm = halo_props[simulation_type[0]]["M200"]
-        #Mass bins in which to divide all halos of al simulations into
-        #The plot_titles list corresponds to the mass_intervals to use as title for every stacked profile plot
-        mass_intervals = [np.min(M200_lcdm), *np.quantile(M200_lcdm, [0.33, 0.66])]
-        plot_titles = ["$4 \\times 10^{11} \leq M_{200}/M_\odot < 1 \\times 10^{12}$", 
-                       "$1 \\times 10^{12} \leq M_{200}/M_\odot < 3 \\times 10^{12}$",
-                      "$M_{200}/M_\odot \geq 3 \\times 10^{12}$"]
+        
+        #Radius interval to plot
+        rad_interval = args.stacked_radius
+        
+        if args.stacked_masses is None:
+            #Virial mass in Msun for each halo in the LCDM model, used to divide all halos in mass bins
+            M200_lcdm = fit_pars_3D[simulation_type[0]]["NFW"]["MASS"]["M200"]
+            #Mass bins in which to divide all halos of al simulations into
+            #The plot_titles list corresponds to the mass_intervals to use as title for every stacked profile plot
+            mass_intervals = [np.min(M200_lcdm), *np.quantile(M200_lcdm, [0.33, 0.66])]
+            
+        else:
+            mass_intervals = np.atleast_1d(args.stacked_masses)
+            
+        plot_titles = [f"{mass_intervals[i]:.1e}" + "$<$" + "$M_{200}/ \\text{M}_\odot$" + "$\leq$" + f"{mass_intervals[i + 1]:.1e}"
+                        for i in range(len(mass_intervals) - 1)] + ["$M_{200}/ \\text{M}_\odot \geq$" + f"{mass_intervals[-1]:.1e}"]
 
-        print("Mass intervals:")
-        for m in mass_intervals:
-            print(f"{m:.0e}")
-
-        #%%%Stacked 3D profiles
+        #----Stacked 3D profiles----
         #Quantities and labels used in plotting, used for both the stacked profiles and relative differences panels
         plot_quantities = ["MASS", "DENSITY", "BETA", "VCIRC", "SIGMAr", "SIGMAt", "SIGMAp", "NUM"]
         quantity_labels = ["$M(\!< r)\ [M_\odot]$", "$\\rho(r)\ [M_\odot/Mpc^3]$", "$\\beta(r)$", "$v_{circ}(r)\ [km/s]$",
@@ -514,11 +714,11 @@ if __name__ == "__main__":
             #Loop over the simulation types and assign the same color to the mean and median profiles of the same simulation
             for b, sim_batch in enumerate(simulation_batches):
                 #Compute the stacked profiles for every mass interval and draw them on the corresponding axis
-                fig, ax = plt.subplots(2, len(mass_intervals), figsize=(11, 6), sharey="row", sharex="col", gridspec_kw={"height_ratios": [2, 1]})
+                fig, ax = plt.subplots(2, len(mass_intervals), figsize=(11, 7), sharey="row", sharex="col", gridspec_kw={"height_ratios": [2, 1]})
             
                 for sim_type in sim_batch:
                     R = halo_profiles_3D[sim_type]["R"][0]    #In units of r500
-                    M200 = halo_props[sim_type]["M200"]    #In Msun
+                    M200 = fit_pars_3D[sim_type]["NFW"]["MASS"]["M200"]    #In Msun
                     
                     for k in range(len(mass_intervals)):
                         quantity_profile = halo_profiles_3D[sim_type][quantity]
@@ -545,7 +745,7 @@ if __name__ == "__main__":
             
                         profile_low, profile_high = np.quantile(quantity_profile[idx, :], [0.16, 0.84], axis=0)
             
-                        M200_lcdm = halo_props[sim_batch[0]]["M200"]
+                        M200_lcdm = fit_pars_3D[sim_batch[0]]["NFW"]["MASS"]["M200"]
                         
                         if k != len(mass_intervals) - 1:
                             idx_lcdm = np.where(np.logical_and(M200_lcdm >= mass_intervals[k], M200_lcdm < mass_intervals[k + 1]))[0]
@@ -575,10 +775,10 @@ if __name__ == "__main__":
                                         median_diff = (median_profile - np.median(lcdm_profile, axis=0)) / np.abs(np.median(lcdm_profile, axis=0))
                                         ax1.plot(R[median_lcdm != 0], median_diff[median_lcdm != 0], linestyle="--", lw=1., color=line.get_color())
                                     
-                                ax0.set_xlim(R[median_lcdm != 0].min(), 4.)
-                                ax0.set_ylim(-1.2, 0.75)
+                                ax0.set_xlim(*rad_interval)
+                                ax0.set_ylim(-1., 1.)
                                 ax0.set_xscale("log")
-                                ax1.set_ylim(-1., 1.)
+                                ax1.set_ylim(-1.5, 1.5)
                     
                             else:
                                 if sim_type == sim_batch[0]:
@@ -596,8 +796,8 @@ if __name__ == "__main__":
                                         ax1.plot(R, mean_diff, linestyle="-", lw=1., color=line.get_color())
                                         ax1.plot(R[median_lcdm != 0], median_diff[median_lcdm != 0], linestyle="--", lw=1., color=line.get_color())
                                 
-                                ax0.set_xlim(0.04, 4.)
-                                ax1.set_ylim(-0.5, 0.5)
+                                ax0.set_xlim(*rad_interval)
+                                ax1.set_ylim(-1., 1.)
                 
                         ax0.tick_params(axis="y", which="both", labelsize=15)
                         ax1.tick_params(axis="y", which="both", labelsize=15)
@@ -619,14 +819,20 @@ if __name__ == "__main__":
                 fig.subplots_adjust(hspace=0., wspace=0.)
                 fig.suptitle("3D " + quantity + " profiles", size=16, y=1.03)
             
-                ax[0, 0].set_ylabel(q_label, size=15)
-                ax[1, 0].set_ylabel(q_label_diff, size=15)
+                if k == 0:
+                    ax0.set_ylabel(q_label, size=15)
+                    ax1.set_ylabel(q_label_diff, size=15)
+                
+                if show_plots:
+                    plt.show(block=True)
             
                 if save_plots:
-                    fig.savefig(fig_dir + "/" + quantity + "_PROFILES_3D_" + str(b) + ".png", dpi=300, bbox_inches='tight')
+                    fig.savefig(fig_dir + "/" + quantity + "_PROFILES_3D_" + str(b) + ".pdf", dpi=300, bbox_inches='tight')
+                    
+                plt.close()
                     
         
-        #%%%Stacked 2D profiles
+        #----Stacked 2D profiles----
         #Quantities and labels used in plotting, used for both the stacked profiles and relative differences panels
         plot_quantities = ["MASS", "DENSITY", "DELTA_SIGMA"]
         quantity_labels = ["$M_{proj}(\!< R)\ [M_\odot]$", "$\Sigma(R)\ [M_\odot/Mpc^2]$", "$\Delta \Sigma(R)\ [M_\odot/Mpc^2]$"]
@@ -636,7 +842,7 @@ if __name__ == "__main__":
         
         #Plot the mean and median mass, density and beta profiles for every model and mass interval
         for dim in projections:
-            for quantity, q_label, q_label_diff in zip(plot_quantities, quantity_labels, quantity_labels_diff):        
+            for quantity, q_label, q_label_diff in zip(plot_quantities, quantity_labels, quantity_labels_diff):
                 #Loop over the simulation types and assign the same color to the mean and median profiles of the same simulation
                 for b, sim_batch in enumerate(simulation_batches):
                     #Compute the stacked profiles for every mass interval and draw them on the corresponding axis
@@ -644,7 +850,7 @@ if __name__ == "__main__":
                 
                     for sim_type in sim_batch:
                         R = halo_profiles_2D[sim_type][dim]["R"][0]    #In units of r500
-                        M200 = halo_props[sim_type]["M200"]
+                        M200 = fit_pars_3D[sim_type]["NFW"]["MASS"]["M200"]
                         
                         for k in range(len(mass_intervals)):
                             quantity_profile = halo_profiles_2D[sim_type][dim][quantity]
@@ -671,7 +877,7 @@ if __name__ == "__main__":
                 
                             profile_low, profile_high = np.quantile(quantity_profile[idx, :], [0.16, 0.84], axis=0)
                 
-                            M200_lcdm = halo_props[sim_batch[0]]["M200"]
+                            M200_lcdm = fit_pars_3D[sim_batch[0]]["NFW"]["MASS"]["M200"]
                             
                             if k != len(mass_intervals) - 1:
                                 idx_lcdm = np.where(np.logical_and(M200_lcdm >= mass_intervals[k], M200_lcdm < mass_intervals[k + 1]))[0]
@@ -700,7 +906,7 @@ if __name__ == "__main__":
                                         ax1.plot(R, mean_diff, linestyle="-", lw=1., color=line.get_color())
                                         ax1.plot(R[median_lcdm != 0], median_diff[median_lcdm != 0], linestyle="--", lw=1., color=line.get_color())
                                     
-                                ax0.set_xlim(0.04, 4.)
+                                ax0.set_xlim(*rad_interval)
                                 ax1.set_ylim(-1., 1.)
                     
                             ax0.tick_params(axis="y", which="both", labelsize=15)
@@ -723,33 +929,40 @@ if __name__ == "__main__":
                     fig.subplots_adjust(hspace=0., wspace=0.)
                     fig.suptitle("2D" + dim + " " + quantity + " profiles", size=16, y=1.03)
                 
-                    ax[0, 0].set_ylabel(q_label, size=15)
-                    ax[1, 0].set_ylabel(q_label_diff, size=15)
+                    if k == 0:
+                        ax0.set_ylabel(q_label, size=15)
+                        ax1.set_ylabel(q_label_diff, size=15)
+                    
+                    if show_plots:
+                        plt.show(block=True)
                 
                     if save_plots:
                         fig.savefig(fig_dir + "/" + quantity + "_PROFILES_2D" + dim + "_" + str(b) + ".pdf", dpi=300, bbox_inches='tight')
-                    
+                        
+                    plt.close()
 
+
+
+#---------------------------------CONCENTRATION-MASS RELATION---------------------------------
     if show_cM:
-        #%%Concentration-mass relation
-        
+    
         #Set mass bins
         mass_0 = np.log10(fit_pars_3D[simulation_type[0]]["NFW"]["MASS"]["M200"])
         
         #-------------------------------------#
-        cond_0 = (mass_0 < 16)
+        cond_0 = (mass_0 > 0.)
         #-------------------------------------#
         
         #Set the mass bins edges as quantiles of the LCDM M200 distribution, as to guarantee a similar number of halos in each bin 
         mass_bins = np.quantile(mass_0[cond_0], np.linspace(0., 1., 5))
         bin_centers = mass_bins[:-1] + np.diff(mass_bins) / 2
         
-        print("Log virial mass bins:")
+        print("Log virial mass bins for cM relation:")
         for m in mass_bins:
             print(f"{m:.2f}")
             
         
-        #Median concentrations
+        #----Median concentrations----
         c200_med = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
         c200_up = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
         c200_down = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
@@ -758,255 +971,290 @@ if __name__ == "__main__":
         c200_up_2D = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
         c200_down_2D = {sim_type: np.empty(len(mass_bins) - 1) for sim_type in simulation_type}
         
-        for b, sim_batch in enumerate(simulation_batches):
-            fig, ax = plt.subplots(2, len(projections) + 1, figsize=(4 * (len(projections) + 1), 4.5), 
-                               sharex="col", sharey="row", gridspec_kw={"height_ratios": [2, 1]})
+        for quantity in np.intersect1d(fit_quantities_3D, fit_quantities_3D):
+            for b, sim_batch in enumerate(simulation_batches):
+                fig, ax = plt.subplots(2, len(projections) + 1, figsize=(4 * (len(projections) + 1), 4.5), 
+                                   sharex="col", sharey="row", gridspec_kw={"height_ratios": [2, 1]})
         
-            for i, sim_type in enumerate(sim_batch):    
-                r200 = 10**fit_pars_3D[sim_type]["NFW"]["MASS"]["r200"]
-                rs = 10**fit_pars_3D[sim_type]["NFW"]["MASS"]["rs"]
-                M200 = fit_pars_3D[sim_type]["NFW"]["MASS"]["M200"]
-                chi2 = fit_pars_3D[sim_type]["NFW"]["MASS"]["chi2"]
-            
-                #---------------------------------#
-                cond = (chi2 < np.inf)
-                #---------------------------------#
-                
-                c200 = (r200 / rs)[cond]
-                lM200 = np.log10(M200[cond])
-            
-                #Divide the halos in mass intervals based on their M200 NFW from the mass fits    
-                for k in range(len(mass_bins) - 1):
-                    idx = np.where(np.logical_and(lM200 >= mass_bins[k], lM200 < mass_bins[k + 1]))[0]
+                for i, sim_type in enumerate(sim_batch):
+                    if "3D" in fit_dimensions_num:
+                        r200 = 10**fit_pars_3D[sim_type]["NFW"][quantity]["r200"]
+                        rs = 10**fit_pars_3D[sim_type]["NFW"][quantity]["rs"]
+                        M200 = fit_pars_3D[sim_type]["NFW"][quantity]["M200"]
+                        chi2 = fit_pars_3D[sim_type]["NFW"][quantity]["chi2"]
                     
-                    c200_med[sim_type][k] = np.median(c200[idx])
-                    c200_down[sim_type][k], c200_up[sim_type][k] = np.quantile(c200[idx], [0.16, 0.84])
-            
-                #3D
-                if sim_type == sim_batch[0]:
-                    ax[0, 0].fill_between(bin_centers, c200_down[sim_type], c200_up[sim_type], color="black", alpha=0.1)
-                    ax[0, 0].plot(bin_centers, c200_med[sim_type], label=model_names[sim_type], lw=1., c="black")
-            
-                else:
-                    line, = ax[0, 0].plot(bin_centers, c200_med[sim_type], label=model_names[sim_type], lw=1.)
-            
-                    med_diff = (c200_med[sim_type] - c200_med[sim_batch[0]]) / c200_med[sim_batch[0]]
-                    ax[1, 0].plot(bin_centers, med_diff, lw=1., c=line.get_color())
-            
-                ax[0, 0].set_title("3D", size=16)
-                ax[0, 0].set_ylabel("$c_{200}$", size=15)
-                ax[0, 0].legend(prop={"size": 11})
-                ax[0, 0].tick_params(axis="y", which="both", labelsize=15)
-            
-                ax[1, 0].axhline(0., ls="-", c="black", alpha=0.6)
-                ax[1, 0].set_xlabel("$\log{M_{200} / M_\odot}$", size=15)
-                ax[1, 0].set_ylabel("$\Delta c_{200}\ /\ c_{200, \Lambda CDM (DMO)}$", size=15)
-                ax[1, 0].tick_params(axis="y", which="both", labelsize=15)
-                ax[1, 0].tick_params(axis="x", which="both", labelsize=15)
-            
-                for m in mass_bins:
-                    ax[0, 0].axvline(m, ls="-", lw=0.5, color="grey")
-                    ax[1, 0].axvline(m, ls="-", lw=0.5, color="grey")
-            
-                #2D
-                for d, dim in enumerate(projections):
-                    r200_2D = 10**fit_pars_2D[sim_type][dim]["NFW"]["MASS"]["r200"]
-                    rs_2D = 10**fit_pars_2D[sim_type][dim]["NFW"]["MASS"]["rs"]
-                    M200_2D = fit_pars_2D[sim_type][dim]["NFW"]["MASS"]["M200"]
-                    chi2_2D = fit_pars_2D[sim_type][dim]["NFW"]["MASS"]["chi2"]
-            
-                    #------------------------------------------#
-                    cond_2D = (chi2_2D < np.inf)
-                    #------------------------------------------#
-                    
-                    c200_2D = (r200_2D / rs_2D)[cond_2D]
-                    lM200_2D = np.log10(M200_2D[cond_2D])
-            
-                    for k in range(len(mass_bins) - 1):
-                        idx_2D = np.where(np.logical_and(lM200_2D >= mass_bins[k], lM200_2D < mass_bins[k + 1]))[0]
-                            
-                        c200_med_2D[sim_type][k] = np.median(c200_2D[idx_2D])
-                        c200_down_2D[sim_type][k], c200_up_2D[sim_type][k] = np.quantile(c200_2D[idx_2D], [0.16, 0.84])
-                    
-                    if sim_type == sim_batch[0]:
-                        ax[0, d + 1].fill_between(bin_centers, c200_down_2D[sim_type], c200_up_2D[sim_type], color="black", alpha=0.1)
-                        ax[0, d + 1].plot(bin_centers, c200_med_2D[sim_type], label=model_names[sim_type], lw=1., c="black")
-                
-                    else:
-                        line_2D, = ax[0, d + 1].plot(bin_centers, c200_med_2D[sim_type], label=model_names[sim_type], lw=1.)
+                        #---------------------------------#
+                        cond = (chi2 < np.inf)
+                        #---------------------------------#
                         
-                        med_diff_2D = (c200_med_2D[sim_type] - c200_med_2D[sim_batch[0]]) / c200_med_2D[sim_batch[0]]
-                        ax[1, d + 1].plot(bin_centers, med_diff_2D, lw=1., c=line_2D.get_color())
-                
-                    ax[0, d + 1].set_title("2D" + dim, size=16)
-                    ax[0, d + 1].set_ylim(0.5, 9)
-                    ax[0, d + 1].tick_params(axis="x", which="both", labelbottom=False)
-                    ax[0, d + 1].tick_params(axis="y", which="both", labelleft=False)
+                        c200 = (r200 / rs)[cond]
+                        lM200 = np.log10(M200[cond])
                     
-                    ax[1, d + 1].tick_params(axis="y", which="both", labelleft=False)
-                    ax[1, d + 1].tick_params(axis="x", which="both", labelsize=15)
+                        #Divide the halos in mass intervals based on their M200 NFW from the mass fits    
+                        for k in range(len(mass_bins) - 1):
+                            idx = np.where(np.logical_and(lM200 >= mass_bins[k], lM200 < mass_bins[k + 1]))[0]
+                            
+                            c200_med[sim_type][k] = np.median(c200[idx])
+                            c200_down[sim_type][k], c200_up[sim_type][k] = np.quantile(c200[idx], [0.16, 0.84])
+                    
+                        #3D
+                        if sim_type == sim_batch[0]:
+                            ax[0, 0].fill_between(bin_centers, c200_down[sim_type], c200_up[sim_type], color="black", alpha=0.1)
+                            ax[0, 0].plot(bin_centers, c200_med[sim_type], label=model_names[sim_type], lw=1., c="black")
+                    
+                        else:
+                            line, = ax[0, 0].plot(bin_centers, c200_med[sim_type], label=model_names[sim_type], lw=1.)
+                    
+                            med_diff = (c200_med[sim_type] - c200_med[sim_batch[0]]) / c200_med[sim_batch[0]]
+                            ax[1, 0].plot(bin_centers, med_diff, lw=1., c=line.get_color())
+                    
+                        ax[0, 0].set_title("3D", size=16)
+                        ax[0, 0].set_ylabel("$c_{200}$", size=15)
+                        ax[0, 0].legend(prop={"size": 11})
+                        ax[0, 0].tick_params(axis="y", which="both", labelsize=15)
+                    
+                        ax[1, 0].axhline(0., ls="-", c="black", alpha=0.6)
+                        ax[1, 0].set_xlabel("$\log{M_{200} / M_\odot}$", size=15)
+                        ax[1, 0].set_ylabel("$\Delta c_{200}\ /\ c_{200, " + sim_batch[0] + "}$", size=15)
+                        ax[1, 0].tick_params(axis="y", which="both", labelsize=15)
+                        ax[1, 0].tick_params(axis="x", which="both", labelsize=15)
+                    
+                        for m in mass_bins:
+                            ax[0, 0].axvline(m, ls="-", lw=0.5, color="grey")
+                            ax[1, 0].axvline(m, ls="-", lw=0.5, color="grey")
                 
-                    ax[1, d + 1].axhline(0., ls="-", c="black", alpha=0.6)
-                    ax[1, d + 1].set_xlabel("$\log{M_{200} / M_\odot}$", size=15)
-            
-                    for m in mass_bins:
-                        ax[0, d + 1].axvline(m, ls="-", lw=0.5, color="grey")
-                        ax[1, d + 1].axvline(m, ls="-", lw=0.5, color="grey")
-            
+                    #2D
+                    if "2D" in fit_dimensions_num:
+                        for d, dim in enumerate(projections):
+                            r200_2D = 10**fit_pars_2D[sim_type][dim]["NFW"][quantity]["r200"]
+                            rs_2D = 10**fit_pars_2D[sim_type][dim]["NFW"][quantity]["rs"]
+                            M200_2D = fit_pars_2D[sim_type][dim]["NFW"][quantity]["M200"]
+                            chi2_2D = fit_pars_2D[sim_type][dim]["NFW"][quantity]["chi2"]
+                    
+                            #------------------------------------------#
+                            cond_2D = (chi2_2D < np.inf)
+                            #------------------------------------------#
+                            
+                            c200_2D = (r200_2D / rs_2D)[cond_2D]
+                            lM200_2D = np.log10(M200_2D[cond_2D])
+                    
+                            for k in range(len(mass_bins) - 1):
+                                idx_2D = np.where(np.logical_and(lM200_2D >= mass_bins[k], lM200_2D < mass_bins[k + 1]))[0]
+                                    
+                                c200_med_2D[sim_type][k] = np.median(c200_2D[idx_2D])
+                                c200_down_2D[sim_type][k], c200_up_2D[sim_type][k] = np.quantile(c200_2D[idx_2D], [0.16, 0.84])
+                            
+                            if sim_type == sim_batch[0]:
+                                ax[0, d + 1].fill_between(bin_centers, c200_down_2D[sim_type], c200_up_2D[sim_type], color="black", alpha=0.1)
+                                ax[0, d + 1].plot(bin_centers, c200_med_2D[sim_type], label=model_names[sim_type], lw=1., c="black")
+                        
+                            else:
+                                line_2D, = ax[0, d + 1].plot(bin_centers, c200_med_2D[sim_type], label=model_names[sim_type], lw=1.)
+                                
+                                med_diff_2D = (c200_med_2D[sim_type] - c200_med_2D[sim_batch[0]]) / c200_med_2D[sim_batch[0]]
+                                ax[1, d + 1].plot(bin_centers, med_diff_2D, lw=1., c=line_2D.get_color())
+                        
+                            ax[0, d + 1].set_title("2D" + dim, size=16)
+                            ax[0, d + 1].set_ylim(0.5, 9)
+                            ax[0, d + 1].tick_params(axis="x", which="both", labelbottom=False)
+                            ax[0, d + 1].tick_params(axis="y", which="both", labelleft=False)
+                            
+                            ax[1, d + 1].tick_params(axis="y", which="both", labelleft=False)
+                            ax[1, d + 1].tick_params(axis="x", which="both", labelsize=15)
+                        
+                            ax[1, d + 1].axhline(0., ls="-", c="black", alpha=0.6)
+                            ax[1, d + 1].set_xlabel("$\log{M_{200} / M_\odot}$", size=15)
+                    
+                            for m in mass_bins:
+                                ax[0, d + 1].axvline(m, ls="-", lw=0.5, color="grey")
+                                ax[1, d + 1].axvline(m, ls="-", lw=0.5, color="grey")
+                
                 fig.subplots_adjust(hspace=0., wspace=0.05)
-            
-            if save_plots:
-                fig.savefig(fig_dir + "cM_relation_diff_" + str(b) + ".pdf", dpi=300, bbox_inches='tight')
+                    
+                if show_plots:
+                    plt.show(block=True)
+                
+                if save_plots:
+                    fig.savefig(fig_dir + "/cM_relation_diff_" + str(b) + "_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
+                    
+                plt.close()
                 
         
-        #Plot concentration-mass relations
+        #----Plot concentration-mass relations----
         fig_c, ax_c = plt.subplots(len(projections) + 1, len(simulation_type), figsize=(10, 2 * (len(projections) + 1)), sharex="col", sharey="row")
         
-        for i, sim_type in enumerate(simulation_type):
-            for quantity in ["MASS"]:
-                r200 = 10**fit_pars_3D[sim_type]["NFW"]["MASS"]["r200"]
-                rs = 10**fit_pars_3D[sim_type]["NFW"]["MASS"]["rs"]
-                M200 = fit_pars_3D[sim_type]["NFW"]["MASS"]["M200"]
-                chi2 = fit_pars_3D[sim_type]["NFW"]["MASS"]["chi2"]
+        for quantity in np.intersect1d(fit_quantities_3D, fit_quantities_2D):
+            for i, sim_type in enumerate(simulation_type):
+                if "3D" in fit_dimensions_num:
+                    if len(simulation_type) > 1:
+                        ax0  = ax_c[0, i]
+                        
+                    else:
+                        ax0 = ax_c[0]
+                
+                    r200 = 10**fit_pars_3D[sim_type]["NFW"][quantity]["r200"]
+                    rs = 10**fit_pars_3D[sim_type]["NFW"][quantity]["rs"]
+                    M200 = fit_pars_3D[sim_type]["NFW"][quantity]["M200"]
+                    chi2 = fit_pars_3D[sim_type]["NFW"][quantity]["chi2"]
+                
+                    #---------------------------------#
+                    cond = (chi2 < np.inf)
+                    #---------------------------------#
+                    
+                    c200 = (r200 / rs)[cond]
+                    lM200 = np.log10(M200[cond])    
             
-                #---------------------------------#
-                cond = (chi2 < np.inf)
-                #---------------------------------#
-                
-                c200 = (r200 / rs)[cond]
-                lM200 = np.log10(M200[cond])    
-        
-                ax_c[0, i].tick_params(axis="x", labelsize=15)
-                ax_c[0, i].tick_params(axis="y", labelsize=15)
-                ax_c[0, i].minorticks_on()
+                    ax0.tick_params(axis="x", labelsize=15)
+                    ax0.tick_params(axis="y", labelsize=15)
+                    ax0.minorticks_on()
+                        
+                    scatter = ax0.scatter(lM200, c200, c=np.log10(chi2[cond]), cmap='viridis', 
+                                              clim=(np.min(np.log10(chi2[cond])), np.max(np.log10(chi2[cond]))), s=0.5, rasterized=True)
+            
+                    ax0.plot(bin_centers, c200_med[sim_type], color="black")
+            
+                    #Credible region
+                    ax0.fill_between(bin_centers, c200_down[sim_type], c200_up[sim_type], alpha=0.4, color="black")
                     
-                scatter = ax_c[0, i].scatter(lM200, c200, c=np.log10(chi2[cond]), cmap='viridis', 
-                                          clim=(np.min(np.log10(chi2[cond])), np.max(np.log10(chi2[cond]))), s=0.5, rasterized=True)
-        
-                ax_c[0, i].plot(bin_centers, c200_med[sim_type], color="black")
-        
-                #Credible region
-                ax_c[0, i].fill_between(bin_centers, c200_down[sim_type], c200_up[sim_type], alpha=0.4, color="black")
-                
-                # ax_c[0, i].set_xlabel(r'$\log{M_{200}/M$_\odot}$', size=14)
-                ax_c[0, 0].set_ylabel(r'$c_{200}$ (3D)', size=16)
-                ax_c[0, i].tick_params(axis="x", which="both", bottom=False, labelbottom=False, labelsize=15)
-                
-                if i != 0:
-                    ax_c[0, i].tick_params(axis="y", which="both", labelleft=False)
-                    
-                ax_c[0, i].set_title(model_names[sim_type], size=17)
-        
-                for m in mass_bins:
-                    ax_c[0, i].axvline(m, ls="-", lw=0.5, color="grey")
+                    if i == 0:
+                        ax0.set_ylabel(r'$c_{200}$ (3D)', size=16)
+                        
+                    else:
+                        ax0.tick_params(axis="y", which="both", labelleft=False)
+                        
+                    ax0.tick_params(axis="x", which="both", bottom=False, labelbottom=False, labelsize=15)
+                        
+                    ax0.set_title(model_names[sim_type], size=17)
+            
+                    for m in mass_bins:
+                        ax0.axvline(m, ls="-", lw=0.5, color="grey")
                 
                 #############################################################################
                 
                 #2D concentration-mass relation
-                for d, dim in enumerate(projections):
-                    r200_2D = 10**fit_pars_2D[sim_type][dim]["NFW"]["MASS"]["r200"]
-                    rs_2D = 10**fit_pars_2D[sim_type][dim]["NFW"]["MASS"]["rs"]
-                    M200_2D = fit_pars_2D[sim_type][dim]["NFW"]["MASS"]["M200"]
-                    chi2_2D = fit_pars_2D[sim_type][dim]["NFW"]["MASS"]["chi2"]
+                if "2D" in fit_dimensions_num:
+                    for d, dim in enumerate(projections):
+                        if len(simulation_type) > 1:
+                            axd = ax_c[d + 1, i]
+                                
+                        else:
+                            axd = ax_c[d + 1]
+                        
+                        r200_2D = 10**fit_pars_2D[sim_type][dim]["NFW"][quantity]["r200"]
+                        rs_2D = 10**fit_pars_2D[sim_type][dim]["NFW"][quantity]["rs"]
+                        M200_2D = fit_pars_2D[sim_type][dim]["NFW"][quantity]["M200"]
+                        chi2_2D = fit_pars_2D[sim_type][dim]["NFW"][quantity]["chi2"]
+                    
+                        #------------------------------------------#
+                        cond_2D = (chi2_2D < 2.)
+                        #------------------------------------------#
+                        
+                        c200_2D = (r200_2D / rs_2D)[cond_2D]
+                        lM200_2D = np.log10(M200_2D[cond_2D])
                 
-                    #------------------------------------------#
-                    cond_2D = (chi2_2D < 2.)
-                    #------------------------------------------#
-                    
-                    c200_2D = (r200_2D / rs_2D)[cond_2D]
-                    lM200_2D = np.log10(M200_2D[cond_2D])
+                        axd.tick_params(axis="x", labelsize=15)
+                        axd.tick_params(axis="y", labelsize=15)
+                        axd.minorticks_on()
+                        
+                        scatter = axd.scatter(lM200_2D, c200_2D, c=np.log10(chi2_2D[cond_2D]), cmap='viridis', 
+                                                     clim=(np.min(np.log10(chi2_2D[cond_2D])), np.max(np.log10(chi2_2D[cond_2D]))), s=0.5, rasterized=True)
+                        axd.plot(bin_centers, c200_med_2D[sim_type], color="black")
+                
+                        #Credible region
+                        axd.fill_between(bin_centers, c200_down_2D[sim_type], c200_up_2D[sim_type], alpha=0.4, color="black")
+                        
+                        axd.set_xlabel(r"$\log{M_{200}/M_\odot}$", size=16)
+                        
+                        if i == 0:
+                            axd.set_ylabel(r"$c_{200}$ (2D" + dim + ")", size=16)
+                            
+                        axd.minorticks_on()
             
-                    ax_c[d + 1, i].tick_params(axis="x", labelsize=15)
-                    ax_c[d + 1, i].tick_params(axis="y", labelsize=15)
-                    ax_c[d + 1, i].minorticks_on()
-                    
-                    scatter_2D = ax_c[d + 1, i].scatter(lM200_2D, c200_2D, c=np.log10(chi2_2D[cond_2D]), cmap='viridis', 
-                                                 clim=(np.min(np.log10(chi2_2D[cond_2D])), np.max(np.log10(chi2_2D[cond_2D]))), s=0.5, rasterized=True)
-                    ax_c[d + 1, i].plot(bin_centers, c200_med_2D[sim_type], color="black")
+                        for m in mass_bins:
+                            axd.axvline(m, ls="-", lw=0.5, color="grey")
             
-                    #Credible region
-                    ax_c[d + 1, i].fill_between(bin_centers, c200_down_2D[sim_type], c200_up_2D[sim_type], alpha=0.4, color="black")
-                    
-                    ax_c[d + 1, i].set_xlabel(r"$\log{M_{200}/M_\odot}$", size=16)
-                    ax_c[d + 1, 0].set_ylabel(r"$c_{200}$ (2D" + dim + ")", size=16)
-                    ax_c[d + 1, i].minorticks_on()
-        
-                    for m in mass_bins:
-                        ax_c[d + 1, i].axvline(m, ls="-", lw=0.5, color="grey")
-        
-        
-        fig_c.subplots_adjust(right=0.82, hspace=0., wspace=0.)
-        cbar_ax = fig_c.add_axes([0.83, 0.11, 0.02, 0.77])
-        cbar = fig_c.colorbar(scatter_2D, cax=cbar_ax)
-        cbar.set_label(label="$\log{\chi^2}$", size=16)
-        cbar_ax.tick_params(labelsize=15)
-        
-        if save_plots:
-            fig_c.savefig(fig_dir + "cM_relation_median.pdf", dpi=300, bbox_inches='tight')
-        
-
-    if show_sparsity:
-        #%%Halo sparsities
-        
-        #%%%Sparsities from simulation
-        for sim_type in simulation_type:
-            h, Om, Ol, z = sim_props_cut[sim_type]["COSM_PARS"]
-            H2z = (h * 100)**2 * (Om * (1 + z)**3 + Ol)
+            fig_c.subplots_adjust(right=0.82, hspace=0., wspace=0.)
+            cbar_ax = fig_c.add_axes([0.83, 0.11, 0.02, 0.77])
+            cbar = fig_c.colorbar(scatter, cax=cbar_ax)
+            cbar.set_label(label="$\log{\chi^2}$", size=16)
+            cbar_ax.tick_params(labelsize=15)
             
-            r200_sim = halo_props_cut[sim_type]["R200"]
-            r500_sim = halo_props_cut[sim_type]["R500"]
+            if show_plots:
+                plt.show(block=True)
             
-            r200 = 10**fit_pars_3D[sim_type]["NFW"]["MASS"]["r200"]
-            rs = 10**fit_pars_3D[sim_type]["NFW"]["MASS"]["rs"]
-            M200_fit = fit_pars_3D[sim_type]["NFW"]["MASS"]["M200"]
-        
-            c200 = r200 / rs
-            s500 = r200_sim**3 / r500_sim**3 * (200 / 500)
-            M200_sim = 200 / (2 * G_mpc) * H2z * (r200_sim)**3
-        
-            #Condition on chi2
-            chi2 = fit_pars_3D[sim_type]["NFW"]["MASS"]["chi2"]
-            cond_s = (r200_sim > 0.)
-        
-            #Sparsity plots
-            markersize = 0.1
-            fig_s, ax_s = plt.subplots(1, 3, figsize=(7, 3), sharey="row", sharex="col", gridspec_kw={"width_ratios": [1, 1, 1.2]})
-          
-            scatter = ax_s[0].scatter(c200[cond_s], np.log10(s500[cond_s]), c=np.log10(chi2[cond_s]), s=markersize, rasterized=True)
-            
-            ax_s[0].set_xlabel("$c^{NFW}_{200}$", size=14)      
-            ax_s[0].set_ylabel("$\log{s_{500}}$", size=14)
-            ax_s[0].tick_params(axis="y", which="both", labelsize=13)
-            ax_s[0].tick_params(axis="x", which="both", labelsize=13)
-            ax_s[0].set_xscale("log")
-        
-            #MASS FIT
-            scatter = ax_s[1].scatter(np.log10(M200_fit[cond_s]), np.log10(s500[cond_s]), c=np.log10(chi2[cond_s]), s=markersize, rasterized=True)
-        
-            ax_s[1].set_xlabel("$\log{M^{NFW}_{200}\ [M_\odot]}$", size=14)
-            ax_s[1].tick_params(axis="y", which="both", left=False, labelleft=False)
-            ax_s[1].tick_params(axis="x", which="both", labelsize=13)
-        
-            #MASS SIMULATION
-            scatter = ax_s[2].scatter(np.log10(M200_sim[cond_s]), np.log10(s500[cond_s]), c=np.log10(chi2[cond_s]), s=markersize, rasterized=True)
-        
-            ax_s[2].set_xlabel("$\log{M^{SIM}_{200}\ [M_\odot]}$", size=14)
-            cbar = plt.colorbar(scatter, location="right")
-            cbar.set_label(r"Log $\chi^2$", fontsize=12)
-        
-            ax_s[2].tick_params(axis="y", which="both", left=False, labelleft=False)
-            ax_s[2].tick_params(axis="x", which="both", labelsize=13)
-            
-            fig_s.suptitle(model_names[sim_type], size=16, y=0.92)
-            fig_s.tight_layout()
-            fig_s.subplots_adjust(wspace=0.)
-        
             if save_plots:
-                fig_s.savefig(fig_dir + sim_type + "/" + sim_type + "_s_relations_NFW_MASS_SIM.pdf", dpi=300, bbox_inches='tight')
+                fig_c.savefig(fig_dir + "/cM_relation_median_" + quantity + ".pdf", dpi=300, bbox_inches='tight')
                 
-        
-        #%%%Sparsities from fits
-        
+            plt.close()
+
+
+
+#---------------------------------HALO SPARSITIES---------------------------------
+    if show_sparsity:
+    
+        #----Sparsities from simulations----
+        for quantity in fit_quantities_3D:
+            for sim_type in simulation_type:
+                h, Om, Ol, z = sim_props_cut[sim_type]["COSM_PARS"]
+                H2z = (h * 100)**2 * (Om * (1 + z)**3 + Ol)
+                
+                r200_sim = halo_props_cut[sim_type]["R200"]
+                r500_sim = halo_props_cut[sim_type]["R500"]
+                
+                r200 = 10**fit_pars_3D[sim_type]["NFW"][quantity]["r200"]
+                rs = 10**fit_pars_3D[sim_type]["NFW"][quantity]["rs"]
+                M200_fit = fit_pars_3D[sim_type]["NFW"][quantity]["M200"]
+            
+                c200 = r200 / rs
+                s500 = r200_sim**3 / r500_sim**3 * (200 / 500)
+                M200_sim = 200 / (2 * G_mpc) * H2z * (r200_sim)**3
+            
+                #Condition on chi2
+                chi2 = fit_pars_3D[sim_type]["NFW"][quantity]["chi2"]
+                cond_s = (r200_sim > 0.)
+            
+                #Sparsity plots
+                markersize = 0.1
+                fig_s, ax_s = plt.subplots(1, 3, figsize=(7, 3), sharey="row", sharex="col", gridspec_kw={"width_ratios": [1, 1, 1.2]})
+              
+                scatter = ax_s[0].scatter(c200[cond_s], np.log10(s500[cond_s]), c=np.log10(chi2[cond_s]), s=markersize, rasterized=True)
+                
+                ax_s[0].set_xlabel("$c^{NFW}_{200}$", size=14)      
+                ax_s[0].set_ylabel("$\log{s_{500}^{SIM}}$", size=14)
+                ax_s[0].tick_params(axis="y", which="both", labelsize=13)
+                ax_s[0].tick_params(axis="x", which="both", labelsize=13)
+                ax_s[0].set_xscale("log")
+            
+                #MASS FIT
+                scatter = ax_s[1].scatter(np.log10(M200_fit[cond_s]), np.log10(s500[cond_s]), c=np.log10(chi2[cond_s]), s=markersize, rasterized=True)
+            
+                ax_s[1].set_xlabel("$\log{M^{NFW}_{200}\ [M_\odot]}$", size=14)
+                ax_s[1].tick_params(axis="y", which="both", left=False, labelleft=False)
+                ax_s[1].tick_params(axis="x", which="both", labelsize=13)
+            
+                #MASS SIMULATION
+                scatter = ax_s[2].scatter(np.log10(M200_sim[cond_s]), np.log10(s500[cond_s]), c=np.log10(chi2[cond_s]), s=markersize, rasterized=True)
+            
+                ax_s[2].set_xlabel("$\log{M^{SIM}_{200}\ [M_\odot]}$", size=14)
+                cbar = plt.colorbar(scatter, location="right")
+                cbar.set_label(r"Log $\chi^2$", fontsize=12)
+            
+                ax_s[2].tick_params(axis="y", which="both", left=False, labelleft=False)
+                ax_s[2].tick_params(axis="x", which="both", labelsize=13)
+                
+                fig_s.suptitle(model_names[sim_type] + " (" + quantity + " fits)", size=16, y=0.92)
+                fig_s.tight_layout()
+                fig_s.subplots_adjust(wspace=0.)
+                
+                if show_plots:
+                    plt.show(block=True)
+            
+                if save_plots:
+                    fig_s.savefig(fig_dir + "/" + sim_type + "/" + sim_type + "_s_relations_NFW_MASS_SIM.pdf", dpi=300, bbox_inches='tight')
+                        
+                plt.close()
+                
+        #----Sparsities from fits----
         #Compute the halo sparsity for given M_Delta from the fitted halo mass profiles
         def ComputeSparsity(Delta1, Deltas, profile_pars, cosm_pars, halo_model="NFW", r200c=None, r500c=None):
             """
@@ -1093,30 +1341,37 @@ if __name__ == "__main__":
             return sparsity, M_Delta
         
         
-        #Compute the halo sparsities from the NFW mass fits
+        #Compute the halo sparsities from the NFW fits
         sparsity_fit, MDelta_fit = {sim_type: dict() for sim_type in simulation_type}, {sim_type: dict() for sim_type in simulation_type}
-        
+
         #Compute the halo sparsities at this overdensities
         Delta_list = [500, 800, 2000]
-        
-        for sim_batch in simulation_batches:
-            for sim_type in sim_batch:
-                lr200 = fit_pars_3D[sim_type]["NFW"]["MASS"]["r200"]
-                lrs = fit_pars_3D[sim_type]["NFW"]["MASS"]["rs"]
+
+        for quantity in fit_quantities_3D:
+            for sim_batch in simulation_batches:
+                for sim_type in sim_batch:
+                    lr200 = fit_pars_3D[sim_type]["NFW"][quantity]["r200"]
+                    lrs = fit_pars_3D[sim_type]["NFW"][quantity]["rs"]
+                    
+                    cosm_pars = sim_props[sim_type]["COSM_PARS"]
                 
-                cosm_pars = sim_props[sim_type]["COSM_PARS"]
+                    #Compute M_Delta2 and associated sparsity for a given Delta1, for every Delta in Deltas
+                    sparsity_fit[sim_type], MDelta_fit[sim_type] = ComputeSparsity(200, Delta_list, [lr200, lrs], cosm_pars, "NFW", 10**lr200)
             
-                #Compute M_Delta2 and associated sparsity for a given Delta1, for every Delta in Deltas
-                sparsity_fit[sim_type], MDelta_fit[sim_type] = ComputeSparsity(200, Delta_list, [lr200, lrs], cosm_pars, "NFW", 10**lr200)
-               
-        #Sparsity distributions
-        for sim_batch in simulation_batches:
-            for sim_type in sim_batch:
-                plt.figure(figsize=(4, 3))
-                plt.xlabel("$\log{s_{200, \Delta}}$", size=15)
-                plt.title(model_names[sim_type], size=15)
-                
-                for delta in Delta_list:
-                    plt.hist(np.log10(sparsity_fit[sim_type][delta]), histtype="step", bins="fd", label="$\Delta = $" + str(delta))
-        
-                plt.legend()
+                    #Plot sparsity distributions
+                    fig = plt.figure(figsize=(4, 3))
+                    plt.xlabel("$\log{s_{200, \Delta}^{NFW}}$", size=15)
+                    plt.title(model_names[sim_type] + " (" + quantity + " fits)", size=15)
+                    
+                    for delta in Delta_list:
+                        plt.hist(np.log10(sparsity_fit[sim_type][delta]), histtype="step", bins="fd", label="$\Delta = $" + str(delta))
+            
+                    plt.legend()
+                    
+                    if show_plots:
+                        plt.show(block=True)
+            
+                    if save_plots:
+                        fig.savefig(fig_dir + "/" + sim_type + "/" + sim_type + "_s_NFW_distr.pdf", dpi=300, bbox_inches='tight')
+
+                    plt.close()
