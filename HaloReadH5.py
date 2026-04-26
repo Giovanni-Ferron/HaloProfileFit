@@ -341,9 +341,11 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
     
     #Halo profiles dictionaries
     halo_profiles_3D = {"MASS": [], "DENSITY": [], "VCIRC": [], "BETA": [], "NUM": [], "CUM_NUM": [], 
-                     "SIGMAr": [], "SIGMAt": [], "SIGMAp": [], "ERR_MASS": [], "ERR_DENSITY": [], "ERR_VCIRC": [], "R": []}
-    halo_profiles_2D = {dim: {"MASS": [], "DENSITY": [], "DEN_CUM": [], "DELTA_SIGMA": [], "NUM": [], "CUM_NUM": [], "ERR_MASS": [], 
-                                   "ERR_DENSITY": [], "ERR_DEN_CUM": [], "ERR_DSIGMA": [], "R": []} for dim in dimensions}
+                     "SIGMAr": [], "SIGMAt": [], "SIGMAp": [], "VELr": [], "VELt": [], "VELp": [],
+                     "ERR_MASS": [], "ERR_DENSITY": [], "ERR_VCIRC": [], "R": []}
+    halo_profiles_2D = {dim: {"MASS": [], "DENSITY": [], "DEN_CUM": [], "DELTA_SIGMA": [], "NUM": [], "CUM_NUM": [], 
+                              "VELr": [], "VELt": [], "VELp": [],
+                              "ERR_MASS": [], "ERR_DENSITY": [], "ERR_DEN_CUM": [], "ERR_DSIGMA": [], "R": []} for dim in dimensions}
     halo_props = {"ID": [], "REGION": [], "R500": [], "R200": [], "M500": [], "M200": [], "MASS_TOT": []}
     sim_props = {"HALO_NUM_TOT": None, "HALO_NUM_REGION": {reg: None for reg in sim_regions}, 
                 "MPART": None, "COSM_PARS": None}
@@ -495,6 +497,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                     Vel_circ = np.sqrt(G_mpc * MassCum / bin_centers * scale_r)    #Circular velocity in km/s
                     Npart = data["Group_%i_Npart"%ii][:]    #Number of particles inside a bin
                     NpartCum = data["Group_%i_NpartCum"%ii][:]    #Cumulative number of particles
+                    vr, vt, vp = data["Group_%i_Velocity"%ii][3:6]    #Velocity profile along r, theta, phi, in km/s
                     sr2, st2, sp2 = data["Group_%i_VelocityDispersion"%ii][3:6]    #Velocity dispersions along r, theta, phi in km^2/s^2
                     
                     with np.errstate(invalid="ignore"):
@@ -517,7 +520,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         err_vel = 0.5 * np.sqrt(G_mpc / (bin_centers * scale_r)) * MassCum**(-1/2) * err_mass
 
                     #Save all data in dictionaries
-                    saved_quantities = [MassCum, Den, Vel_circ, beta_r, Npart, NpartCum, sr2, st2, sp2, 
+                    saved_quantities = [MassCum, Den, Vel_circ, beta_r, Npart, NpartCum, sr2, st2, sp2, vr, vt, vp,
                                         err_mass, err_den, err_vel, bin_centers]
                     
                     for key, quantity in zip(list(halo_profiles_3D.keys()), saved_quantities):
@@ -532,6 +535,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         Den_2D = data["Group_%i_Density2D"%ii + dim][:] / scale_r**2    #2D density inside a bin in M_sun/Mpc^2
                         Ncum_2D = data["Group_%i_NpartCum2D"%ii + dim][:]    #2D number of particles inside a bin
                         Nbin_2D = data["Group_%i_Npart2D"%ii + dim][:]    #2D cumulative number of particles
+                        vr_2D, vt_2D, vp_2D = data["Group_%i_Velocity2D"%ii + dim][3:6]    #2D velocity profile along r, theta, phi, in km/s
 
                         #Compute mass Poisson errors
                         err_mass_2D = Mpart * np.sqrt(Ncum_2D)
@@ -553,7 +557,7 @@ def GetProfiles(hdf5_path=None, sim_name=None, sim_type=None, sim_regions="", di
                         err_dsigma = np.sqrt(err_den_cum_2D**2 + err_den_2D**2)
 
                         #Save all data in dictionaries
-                        saved_quantities_2D = [MassCum_2D, Den_2D, DenCum_2D, Dsigma, Nbin_2D, Ncum_2D, 
+                        saved_quantities_2D = [MassCum_2D, Den_2D, DenCum_2D, Dsigma, Nbin_2D, Ncum_2D, vr_2D, vt_2D, vp_2D,
                                                err_mass_2D, err_den_2D, err_den_cum_2D, err_dsigma, bin_centers_2D]
                         
                         for key, quantity in zip(list(halo_profiles_2D[dim].keys()), saved_quantities_2D):
