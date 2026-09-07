@@ -71,9 +71,9 @@ The dictionary is structured as follows:
 
     Possible key values:
     --------------------
-    BINNED_PROFILE_3D = {"MASS", "DENSITY", "VCIRC", "BETA", "NUM", "CUM_NUM", "SIGMAr", "SIGMAt", "SIGMAp", "ERR_MASS", "ERR_DENSITY", "ERR_VCIRC", "R"}
+    BINNED_PROFILE_3D = {"MASS", "DENSITY", "VCIRC", "BETA", "NUM", "CUM_NUM", "VELr", "VELt", "VELp", "SIGMAr", "SIGMAt", "SIGMAp", "ERR_MASS", "ERR_DENSITY", "ERR_VCIRC", "R"}
 
-    BINNED_PROFILE_2D = {"MASS", "DENSITY", "DEN_CUM", "DELTA_SIGMA", "NUM", "CUM_NUM", "ERR_MASS", "ERR_DENSITY", "ERR_DEN_CUM", "ERR_DSIGMA", "R"}
+    BINNED_PROFILE_2D = {"MASS", "DENSITY", "DEN_CUM", "DELTA_SIGMA", "NUM", "CUM_NUM", "VELr", "VELt", "VELp", "ERR_MASS", "ERR_DENSITY", "ERR_DEN_CUM", "ERR_DSIGMA", "R"}
 
 The **fit_pars** and **fit_cov** contain all halo best-fit parameters and covariances respectively, for each profile model and fit quantity supplied, and for both the 3D and 2D fits.
 
