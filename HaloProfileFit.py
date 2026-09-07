@@ -5,8 +5,6 @@ Created on Mon Mar 23 16:28:38 2026
 @author: Giovanni Y. Ferron
 """
 
-#TODO: use glob to read all files without folder structure
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import rv_histogram
